@@ -1,0 +1,8 @@
+fastapi_utils
+fastapi
+SQLAlchemy
+pydantic
+python-dotenv
+fastapi[standard]
+uvicorn
+typing_inspect
