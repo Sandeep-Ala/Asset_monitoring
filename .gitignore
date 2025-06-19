@@ -1,0 +1,54 @@
+# ---- Python / FastAPI ----
+__pycache__/
+*.py[cod]
+*.sqlite3
+*.db
+*.log
+*.env
+.env.*
+*.egg-info/
+dist/
+build/
+.mypy_cache/
+.pytest_cache/
+venv/
+ENV/
+env/
+instance/
+
+# Parquet files and folders
+*.parquet
+**/*.parquet
+parquet/
+.parquet/
+**/parquet/
+**/.parquet/
+
+# Pydantic compiled files
+*.pyd
+
+# VS Code / IDE / OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# ---- Quasar / Vue ----
+node_modules/
+dist/
+.quasar/
+.cache/
+.temp/
+*.tmp
+*.local
+.env.local
+.env.*.local
+.nitro/
+.output/
+yarn.lock
+pnpm-lock.yaml
+
+# ---- Optional: if using Docker ----
+*.pid
+*.sock
+docker-compose.override.yml
