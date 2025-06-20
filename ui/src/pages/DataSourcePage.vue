@@ -1,65 +1,269 @@
 <!-- ui/src/pages/DataSourcePage.vue -->
 <template>
-  <q-page padding>
+  <q-page class="q-pa-md">
+    <!-- Header -->
+    <div class="row items-center justify-between q-mb-lg">
+      <div>
+        <div class="text-h4 text-weight-bold">Data Sources</div>
+        <div class="text-subtitle1 text-grey-6">
+          Connect and manage your data sources for equipment monitoring
+        </div>
+      </div>
+      <div class="row q-gutter-sm">
+        <q-btn
+          label="Import Config"
+          icon="file_upload"
+          color="secondary"
+          outline
+          @click="showImportDialog = true"
+        />
+        <q-btn
+          label="New Data Source"
+          icon="add"
+          color="primary"
+          @click="showCreateWizard = true"
+        />
+      </div>
+    </div>
+
+    <!-- Statistics Cards -->
+    <div class="row q-gutter-md q-mb-lg">
+      <div class="col-12 col-md-3">
+        <q-card class="bg-primary text-white">
+          <q-card-section>
+            <div class="row items-center">
+              <div class="col">
+                <div class="text-h6">{{ dataSources.length }}</div>
+                <div class="text-caption">Total Sources</div>
+              </div>
+              <div class="col-auto">
+                <q-icon name="storage" size="2rem" />
+              </div>
+            </div>
+          </q-card-section>
+        </q-card>
+      </div>
+
+      <div class="col-12 col-md-3">
+        <q-card class="bg-positive text-white">
+          <q-card-section>
+            <div class="row items-center">
+              <div class="col">
+                <div class="text-h6">{{ activeSourcesCount }}</div>
+                <div class="text-caption">Active Sources</div>
+              </div>
+              <div class="col-auto">
+                <q-icon name="check_circle" size="2rem" />
+              </div>
+            </div>
+          </q-card-section>
+        </q-card>
+      </div>
+
+      <div class="col-12 col-md-3">
+        <q-card class="bg-info text-white">
+          <q-card-section>
+            <div class="row items-center">
+              <div class="col">
+                <div class="text-h6">{{ totalMappingsCount }}</div>
+                <div class="text-caption">Total Mappings</div>
+              </div>
+              <div class="col-auto">
+                <q-icon name="link" size="2rem" />
+              </div>
+            </div>
+          </q-card-section>
+        </q-card>
+      </div>
+
+      <div class="col-12 col-md-3">
+        <q-card class="bg-warning text-white">
+          <q-card-section>
+            <div class="row items-center">
+              <div class="col">
+                <div class="text-h6">{{ healthySourcesCount }}</div>
+                <div class="text-caption">Healthy Sources</div>
+              </div>
+              <div class="col-auto">
+                <q-icon name="favorite" size="2rem" />
+              </div>
+            </div>
+          </q-card-section>
+        </q-card>
+      </div>
+    </div>
+
+    <!-- Main Content -->
     <div class="row q-gutter-md">
       <!-- Left Panel - Data Sources List -->
-      <div class="col-md-4 col-12">
+      <div class="col-12 col-md-4">
         <q-card>
           <q-card-section>
             <div class="row items-center justify-between">
               <div class="text-h6">Data Sources</div>
-              <q-btn icon="add" color="primary" dense @click="showCreateDialog = true" />
+              <q-btn
+                icon="refresh"
+                flat
+                round
+                size="sm"
+                @click="refreshDataSources"
+                :loading="loadingDataSources"
+              />
             </div>
           </q-card-section>
 
           <q-separator />
 
+          <!-- Search and Filter -->
           <q-card-section>
-            <q-list>
+            <q-input
+              v-model="searchQuery"
+              placeholder="Search data sources..."
+              dense
+              clearable
+            >
+              <template #prepend>
+                <q-icon name="search" />
+              </template>
+            </q-input>
+
+            <div class="row q-gutter-xs q-mt-sm">
+              <q-btn
+                :label="`All (${dataSources.length})`"
+                size="sm"
+                :color="sourceFilter === 'all' ? 'primary' : 'grey-5'"
+                flat
+                @click="sourceFilter = 'all'"
+              />
+              <q-btn
+                :label="`Active (${activeSourcesCount})`"
+                size="sm"
+                :color="sourceFilter === 'active' ? 'positive' : 'grey-5'"
+                flat
+                @click="sourceFilter = 'active'"
+              />
+              <q-btn
+                :label="`Inactive (${dataSources.length - activeSourcesCount})`"
+                size="sm"
+                :color="sourceFilter === 'inactive' ? 'negative' : 'grey-5'"
+                flat
+                @click="sourceFilter = 'inactive'"
+              />
+            </div>
+          </q-card-section>
+
+          <q-separator />
+
+          <!-- Data Sources List -->
+          <q-card-section class="q-pa-none">
+            <q-list separator>
               <q-item
-                v-for="source in dataSources"
+                v-for="source in filteredDataSources"
                 :key="source.source_id"
                 clickable
-                :active="selectedSource?.source_id === source.source_id"
+                :class="selectedSource?.source_id === source.source_id ? 'bg-blue-1' : ''"
                 @click="selectDataSource(source)"
               >
                 <q-item-section avatar>
-                  <q-icon
-                    :name="source.source_type === 'influxdb' ? 'storage' : 'folder'"
-                    :color="source.is_active ? 'green' : 'grey'"
-                  />
+                  <q-avatar :color="getSourceTypeColor(source.source_type)" text-color="white" size="md">
+                    <q-icon :name="getSourceTypeIcon(source.source_type)" />
+                  </q-avatar>
                 </q-item-section>
 
                 <q-item-section>
                   <q-item-label>{{ source.source_name }}</q-item-label>
-                  <q-item-label caption>{{ source.source_type.toUpperCase() }}</q-item-label>
+                  <q-item-label caption>
+                    {{ source.source_type.toUpperCase() }} •
+                    {{ formatDate(source.updated_at) }}
+                  </q-item-label>
                 </q-item-section>
 
                 <q-item-section side>
-                  <div class="row q-gutter-xs">
-                    <q-btn
-                      icon="edit"
+                  <div class="column items-end">
+                    <q-chip
+                      :color="source.is_active ? 'positive' : 'negative'"
+                      text-color="white"
                       size="sm"
-                      flat
-                      dense
-                      @click.stop="editDataSource(source)"
-                    />
-                    <q-btn
-                      :icon="source.is_active ? 'pause' : 'play_arrow'"
-                      size="sm"
-                      flat
-                      dense
-                      :color="source.is_active ? 'orange' : 'green'"
-                      @click.stop="toggleDataSource(source)"
-                    />
-                    <q-btn
-                      icon="delete"
-                      size="sm"
-                      flat
-                      dense
-                      color="red"
-                      @click.stop="deleteDataSource(source)"
-                    />
+                    >
+                      {{ source.is_active ? 'Active' : 'Inactive' }}
+                    </q-chip>
+
+                    <!-- Health Status -->
+                    <div class="row q-gutter-xs q-mt-xs">
+                      <q-icon
+                        :name="getHealthIcon(source.source_id)"
+                        :color="getHealthColor(source.source_id)"
+                        size="sm"
+                        :title="getHealthTooltip(source.source_id)"
+                      />
+                    </div>
+                  </div>
+                </q-item-section>
+
+                <q-item-section side>
+                  <q-btn-dropdown
+                    icon="more_vert"
+                    flat
+                    round
+                    size="sm"
+                    @click.stop
+                  >
+                    <q-list>
+                      <q-item clickable @click="editDataSource(source)">
+                        <q-item-section avatar>
+                          <q-icon name="edit" />
+                        </q-item-section>
+                        <q-item-section>Edit</q-item-section>
+                      </q-item>
+
+                      <q-item clickable @click="cloneDataSource(source)">
+                        <q-item-section avatar>
+                          <q-icon name="content_copy" />
+                        </q-item-section>
+                        <q-item-section>Clone</q-item-section>
+                      </q-item>
+
+                      <q-item clickable @click="exportDataSource(source)">
+                        <q-item-section avatar>
+                          <q-icon name="file_download" />
+                        </q-item-section>
+                        <q-item-section>Export</q-item-section>
+                      </q-item>
+
+                      <q-separator />
+
+                      <q-item
+                        clickable
+                        @click="toggleDataSource(source)"
+                        :class="source.is_active ? 'text-orange' : 'text-green'"
+                      >
+                        <q-item-section avatar>
+                          <q-icon :name="source.is_active ? 'pause' : 'play_arrow'" />
+                        </q-item-section>
+                        <q-item-section>
+                          {{ source.is_active ? 'Deactivate' : 'Activate' }}
+                        </q-item-section>
+                      </q-item>
+
+                      <q-item clickable @click="deleteDataSource(source)" class="text-negative">
+                        <q-item-section avatar>
+                          <q-icon name="delete" />
+                        </q-item-section>
+                        <q-item-section>Delete</q-item-section>
+                      </q-item>
+                    </q-list>
+                  </q-btn-dropdown>
+                </q-item-section>
+              </q-item>
+
+              <q-item v-if="filteredDataSources.length === 0">
+                <q-item-section class="text-center text-grey-6">
+                  <div>
+                    <q-icon name="storage" size="3rem" class="q-mb-md" />
+                    <div class="text-h6">No data sources found</div>
+                    <div class="text-body2">
+                      {{ searchQuery ? 'Try adjusting your search' : 'Create your first data source to get started' }}
+                    </div>
                   </div>
                 </q-item-section>
               </q-item>
@@ -68,26 +272,45 @@
         </q-card>
       </div>
 
-      <!-- Right Panel - Configuration -->
-      <div class="col-md-8 col-12">
+      <!-- Right Panel - Source Details -->
+      <div class="col-12 col-md-8">
         <q-card v-if="selectedSource">
+          <!-- Source Header -->
           <q-card-section>
             <div class="row items-center justify-between">
-              <div class="text-h6">{{ selectedSource.source_name }}</div>
+              <div class="row items-center q-gutter-md">
+                <q-avatar :color="getSourceTypeColor(selectedSource.source_type)" text-color="white" size="lg">
+                  <q-icon :name="getSourceTypeIcon(selectedSource.source_type)" />
+                </q-avatar>
+                <div>
+                  <div class="text-h6">{{ selectedSource.source_name }}</div>
+                  <div class="text-subtitle2 text-grey-6">
+                    {{ selectedSource.source_type.toUpperCase() }} Data Source
+                  </div>
+                </div>
+              </div>
+
               <div class="row q-gutter-sm">
+                <q-btn
+                  label="Test Connection"
+                  icon="wifi_find"
+                  color="secondary"
+                  outline
+                  @click="testSourceConnection"
+                  :loading="testingConnection"
+                />
                 <q-btn
                   label="Discover Schema"
                   icon="search"
                   color="primary"
-                  @click="discoverSchema"
-                  :loading="discovering"
+                  outline
+                  @click="showSchemaExplorer = true"
                 />
                 <q-btn
-                  label="Auto Map"
-                  icon="auto_fix_high"
+                  label="Create Mapping"
+                  icon="link"
                   color="positive"
-                  @click="autoMapMeasurements"
-                  :loading="autoMapping"
+                  @click="showMappingWizard = true"
                 />
               </div>
             </div>
@@ -95,187 +318,67 @@
 
           <q-separator />
 
-          <!-- Tabs for different views -->
+          <!-- Tabs -->
           <q-tabs v-model="activeTab" dense class="text-grey" active-color="primary">
-            <q-tab name="connection" label="Connection" />
-            <q-tab name="schema" label="Schema" />
-            <q-tab name="mappings" label="Mappings" />
+            <q-tab name="overview" label="Overview" icon="dashboard" />
+            <q-tab name="connection" label="Connection" icon="settings" />
+            <q-tab name="schema" label="Schema" icon="account_tree" />
+            <q-tab name="mappings" label="Mappings" icon="link" />
+            <q-tab name="health" label="Health" icon="monitor_heart" />
           </q-tabs>
 
           <q-separator />
 
+          <!-- Tab Panels -->
           <q-tab-panels v-model="activeTab" animated>
+            <!-- Overview Tab -->
+            <q-tab-panel name="overview">
+              <SourceOverview
+                :source="selectedSource"
+                :mappings="sourceMappings"
+                :health-status="sourceHealthStatus[selectedSource.source_id]"
+                @refresh="refreshSourceData"
+              />
+            </q-tab-panel>
+
             <!-- Connection Tab -->
             <q-tab-panel name="connection">
-              <div class="q-pa-md">
-                <q-form @submit.prevent="testConnection">
-                  <div class="text-subtitle1 q-mb-md">Connection Details</div>
-
-                  <div v-if="connectionConfig">
-                    <div v-if="selectedSource.source_type === 'influxdb'">
-                      <q-input v-model="connectionConfig.url" label="InfluxDB URL" readonly />
-                      <q-input v-model="connectionConfig.org" label="Organization" readonly class="q-mt-sm" />
-                      <q-input v-model="connectionConfig.bucket" label="Bucket" readonly class="q-mt-sm" />
-                      <q-input v-model="connectionConfig.token" label="Token" type="password" readonly class="q-mt-sm" />
-                    </div>
-
-                    <div v-else-if="selectedSource.source_type === 'parquet'">
-                      <q-input v-model="connectionConfig.base_path" label="Base Path" readonly />
-                      <q-input v-model="connectionConfig.path_pattern" label="Path Pattern" readonly class="q-mt-sm" />
-                    </div>
-                  </div>
-
-                  <div class="q-mt-md">
-                    <q-btn
-                      label="Test Connection"
-                      type="submit"
-                      color="primary"
-                      :loading="testingConnection"
-                    />
-                  </div>
-                </q-form>
-
-                <!-- Connection Status -->
-                <q-card v-if="connectionStatus" class="q-mt-md" :class="connectionStatus.success ? 'bg-green-1' : 'bg-red-1'">
-                  <q-card-section>
-                    <div class="row items-center">
-                      <q-icon
-                        :name="connectionStatus.success ? 'check_circle' : 'error'"
-                        :color="connectionStatus.success ? 'green' : 'red'"
-                        size="sm"
-                        class="q-mr-sm"
-                      />
-                      <div class="text-body2">{{ connectionStatus.message }}</div>
-                    </div>
-                    <div v-if="connectionStatus.details" class="q-mt-sm">
-                      <pre class="text-caption">{{ JSON.stringify(connectionStatus.details, null, 2) }}</pre>
-                    </div>
-                  </q-card-section>
-                </q-card>
-              </div>
+              <SourceConnection
+                :source="selectedSource"
+                @test-connection="testSourceConnection"
+                @update-config="updateSourceConfig"
+              />
             </q-tab-panel>
 
             <!-- Schema Tab -->
             <q-tab-panel name="schema">
-              <div class="q-pa-md">
-                <div class="row q-gutter-md">
-                  <!-- Measurements -->
-                  <div class="col-12 col-md-4">
-                    <q-card>
-                      <q-card-section>
-                        <div class="text-subtitle2">Measurements</div>
-                        <q-list dense>
-                          <q-item
-                            v-for="measurement in discoveredSchema.measurements"
-                            :key="measurement"
-                            clickable
-                            :active="selectedMeasurement === measurement"
-                            @click="selectMeasurement(measurement)"
-                          >
-                            <q-item-section>{{ measurement }}</q-item-section>
-                          </q-item>
-                        </q-list>
-                      </q-card-section>
-                    </q-card>
-                  </div>
-
-                  <!-- Tags -->
-                  <div class="col-12 col-md-4">
-                    <q-card>
-                      <q-card-section>
-                        <div class="text-subtitle2">Tags</div>
-                        <q-list dense>
-                          <q-item v-for="tag in discoveredSchema.tags" :key="tag">
-                            <q-item-section>
-                              <q-chip size="sm" color="blue" text-color="white">{{ tag }}</q-chip>
-                            </q-item-section>
-                          </q-item>
-                        </q-list>
-                      </q-card-section>
-                    </q-card>
-                  </div>
-
-                  <!-- Fields -->
-                  <div class="col-12 col-md-4">
-                    <q-card>
-                      <q-card-section>
-                        <div class="text-subtitle2">Fields</div>
-                        <q-list dense>
-                          <q-item v-for="field in discoveredSchema.fields" :key="field.name">
-                            <q-item-section>
-                              <div>{{ field.name }}</div>
-                              <div class="text-caption text-grey">{{ field.type }}</div>
-                            </q-item-section>
-                          </q-item>
-                        </q-list>
-                      </q-card-section>
-                    </q-card>
-                  </div>
-                </div>
-
-                <!-- Sample Data -->
-                <q-card v-if="sampleData.length > 0" class="q-mt-md">
-                  <q-card-section>
-                    <div class="text-subtitle2">Sample Data</div>
-                    <q-table
-                      :rows="sampleData"
-                      :columns="sampleColumns"
-                      row-key="index"
-                      dense
-                      flat
-                      :pagination="{ rowsPerPage: 5 }"
-                    />
-                  </q-card-section>
-                </q-card>
-              </div>
+              <SourceSchema
+                :source="selectedSource"
+                :discovered-schema="discoveredSchema"
+                @discover="discoverSourceSchema"
+                @refresh-schema="refreshSchema"
+              />
             </q-tab-panel>
 
             <!-- Mappings Tab -->
             <q-tab-panel name="mappings">
-              <div class="q-pa-md">
-                <div class="row items-center justify-between q-mb-md">
-                  <div class="text-subtitle1">Equipment Mappings</div>
-                  <q-btn
-                    label="Create Mapping"
-                    icon="add"
-                    color="primary"
-                    @click="showMappingDialog = true"
-                  />
-                </div>
+              <SourceMappings
+                :source="selectedSource"
+                :mappings="sourceMappings"
+                :equipments="equipments"
+                @create-mapping="showMappingWizard = true"
+                @edit-mapping="editMapping"
+                @delete-mapping="deleteMapping"
+              />
+            </q-tab-panel>
 
-                <q-list separator>
-                  <q-item v-for="mapping in sourceMappings" :key="mapping.mapping_id">
-                    <q-item-section>
-                      <q-item-label>{{ getEquipmentName(mapping.equipment_id) }}</q-item-label>
-                      <q-item-label caption>Measurement: {{ mapping.measurement_name }}</q-item-label>
-                    </q-item-section>
-
-                    <q-item-section side>
-                      <div class="row q-gutter-xs">
-                        <q-btn
-                          icon="visibility"
-                          size="sm"
-                          flat
-                          @click="viewMapping(mapping)"
-                        />
-                        <q-btn
-                          icon="edit"
-                          size="sm"
-                          flat
-                          @click="editMapping(mapping)"
-                        />
-                        <q-btn
-                          icon="delete"
-                          size="sm"
-                          flat
-                          color="red"
-                          @click="deleteMapping(mapping)"
-                        />
-                      </div>
-                    </q-item-section>
-                  </q-item>
-                </q-list>
-              </div>
+            <!-- Health Tab -->
+            <q-tab-panel name="health">
+              <SourceHealth
+                :source="selectedSource"
+                :health-data="sourceHealthStatus[selectedSource.source_id]"
+                @refresh-health="refreshHealthStatus"
+              />
             </q-tab-panel>
           </q-tab-panels>
         </q-card>
@@ -283,300 +386,181 @@
         <!-- Empty State -->
         <q-card v-else>
           <q-card-section class="text-center q-pa-xl">
-            <q-icon name="storage" size="4rem" color="grey-5" />
-            <div class="text-h6 text-grey-7 q-mt-md">No Data Source Selected</div>
-            <div class="text-body2 text-grey-6">Select a data source from the list or create a new one</div>
+            <q-icon name="touch_app" size="4rem" class="text-grey-4 q-mb-md" />
+            <div class="text-h6 text-grey-6 q-mb-sm">Select a Data Source</div>
+            <div class="text-body2 text-grey-5">
+              Choose a data source from the list to view its details and manage connections
+            </div>
           </q-card-section>
         </q-card>
       </div>
     </div>
 
-    <!-- Create/Edit Data Source Dialog -->
-    <q-dialog v-model="showCreateDialog" persistent>
-      <q-card style="min-width: 600px; max-width: 800px">
-        <q-card-section>
-          <div class="text-h6">{{ editingSource ? 'Edit' : 'Create' }} Data Source</div>
-        </q-card-section>
-
-        <q-separator />
-
-        <q-card-section>
-          <q-form @submit.prevent="saveDataSource">
-            <!-- Basic Information -->
-            <div class="text-subtitle2 q-mb-md">Basic Information</div>
-
-            <q-input
-              v-model="dataSourceForm.source_name"
-              label="Source Name"
-              placeholder="Enter a descriptive name"
-              required
-              class="q-mb-md"
-            />
-
-            <q-select
-              v-model="dataSourceForm.source_type"
-              :options="sourceTypeOptions"
-              label="Source Type"
-              required
-              class="q-mb-lg"
-              @update:model-value="resetConnectionConfig"
-            />
-
-            <!-- InfluxDB Configuration -->
-            <div v-if="dataSourceForm.source_type === 'influxdb'">
-              <div class="text-subtitle2 q-mb-md">InfluxDB Connection Settings</div>
-
-              <q-input
-                v-model="dataSourceForm.connection_config.url"
-                label="InfluxDB URL"
-                placeholder="http://localhost:8086"
-                hint="The base URL of your InfluxDB instance"
-                required
-                class="q-mb-md"
-              >
-                <template #prepend>
-                  <q-icon name="link" />
-                </template>
-              </q-input>
-
-              <q-input
-                v-model="dataSourceForm.connection_config.org"
-                label="Organization"
-                placeholder="my-org"
-                hint="Your InfluxDB organization name"
-                required
-                class="q-mb-md"
-              >
-                <template #prepend>
-                  <q-icon name="business" />
-                </template>
-              </q-input>
-
-              <q-input
-                v-model="dataSourceForm.connection_config.bucket"
-                label="Bucket"
-                placeholder="my-bucket"
-                hint="The bucket containing your time-series data"
-                required
-                class="q-mb-md"
-              >
-                <template #prepend>
-                  <q-icon name="storage" />
-                </template>
-              </q-input>
-
-              <q-input
-                v-model="dataSourceForm.connection_config.token"
-                label="Access Token"
-                type="password"
-                placeholder="Your InfluxDB access token"
-                hint="API token with read permissions"
-                required
-                class="q-mb-md"
-              >
-                <template #prepend>
-                  <q-icon name="key" />
-                </template>
-                <template #append>
-                  <q-btn
-                    :icon="showToken ? 'visibility_off' : 'visibility'"
-                    flat
-                    dense
-                    @click="toggleTokenVisibility"
-                  />
-                </template>
-              </q-input>
-            </div>
-
-            <!-- Parquet Configuration -->
-            <div v-if="dataSourceForm.source_type === 'parquet'">
-              <div class="text-subtitle2 q-mb-md">Parquet Files Configuration</div>
-
-              <q-input
-                v-model="dataSourceForm.connection_config.base_path"
-                label="Base Path"
-                placeholder="D:/Asset Monitoring System/Data-Backup"
-                hint="Root directory containing your parquet files"
-                required
-                class="q-mb-md"
-              >
-                <template #prepend>
-                  <q-icon name="folder" />
-                </template>
-                <template #append>
-                  <q-btn
-                    icon="folder_open"
-                    flat
-                    dense
-                    @click="browseFolder"
-                    title="Browse folder"
-                  />
-                </template>
-              </q-input>
-
-              <q-input
-                v-model="dataSourceForm.connection_config.path_pattern"
-                label="Path Pattern"
-                placeholder="**/*.parquet"
-                hint="Glob pattern to match parquet files"
-                required
-                class="q-mb-md"
-              >
-                <template #prepend>
-                  <q-icon name="search" />
-                </template>
-              </q-input>
-            </div>
-
-            <!-- Connection Test Result -->
-            <q-card v-if="formConnectionStatus" class="q-mb-md" :class="formConnectionStatus.success ? 'bg-green-1' : 'bg-red-1'">
-              <q-card-section>
-                <div class="row items-center">
-                  <q-icon
-                    :name="formConnectionStatus.success ? 'check_circle' : 'error'"
-                    :color="formConnectionStatus.success ? 'green' : 'red'"
-                    size="sm"
-                    class="q-mr-sm"
-                  />
-                  <div class="text-body2">{{ formConnectionStatus.message }}</div>
-                </div>
-              </q-card-section>
-            </q-card>
-
-            <!-- Action Buttons -->
-            <div class="row q-gutter-sm q-mt-lg">
-              <q-btn
-                label="Test Connection"
-                icon="wifi_find"
-                color="secondary"
-                @click="testConnectionForm"
-                :loading="testingConnectionForm"
-                :disable="!isFormValid"
-              />
-              <q-spacer />
-              <q-btn
-                label="Cancel"
-                flat
-                @click="cancelDialog"
-              />
-              <q-btn
-                label="Save"
-                icon="save"
-                type="submit"
-                color="primary"
-                :loading="savingDataSource"
-                :disable="!isFormValid"
-              />
-            </div>
-          </q-form>
-        </q-card-section>
-      </q-card>
-    </q-dialog>
-
-    <!-- Mapping Dialog -->
-    <MappingDialog
-      v-model="showMappingDialog"
-      :data-source="selectedSource"
-      :measurements="discoveredSchema.measurements"
+    <!-- Dialogs and Components -->
+    <DataSourceWizard
+      v-model="showCreateWizard"
       :equipments="equipments"
+      @source-created="onSourceCreated"
+    />
+
+    <SchemaExplorer
+      v-model="showSchemaExplorer"
+      :source="selectedSource"
+      @schema-discovered="onSchemaDiscovered"
+    />
+
+    <MappingWizard
+      v-model="showMappingWizard"
+      :source="selectedSource"
+      :equipments="equipments"
+      :discovered-schema="discoveredSchema"
       @mapping-created="onMappingCreated"
     />
+
+    <!-- Import Config Dialog -->
+    <q-dialog v-model="showImportDialog">
+      <q-card style="min-width: 400px">
+        <q-card-section>
+          <div class="text-h6">Import Configuration</div>
+        </q-card-section>
+
+        <q-card-section>
+          <q-file
+            v-model="importFile"
+            label="Select configuration file"
+            accept=".json"
+            filled
+          >
+            <template #prepend>
+              <q-icon name="attach_file" />
+            </template>
+          </q-file>
+        </q-card-section>
+
+        <q-card-actions align="right">
+          <q-btn label="Cancel" flat @click="showImportDialog = false" />
+          <q-btn
+            label="Import"
+            color="primary"
+            @click="importConfiguration"
+            :disable="!importFile"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
   </q-page>
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useQuasar } from 'quasar'
 import axios from 'axios'
-import MappingDialog from 'src/components/MappingDialog.vue'
+
+// Import components (these will be created separately)
+import DataSourceWizard from 'src/components/DataSourceWizard.vue'
+import SchemaExplorer from 'src/components/SchemaExplorer.vue'
+import MappingWizard from 'src/components/MappingWizard.vue'
+import SourceOverview from 'src/components/SourceOverview.vue'
+// import SourceConnection from 'src/components/SourceConnection.vue'
+// import SourceSchema from 'src/components/SourceSchema.vue'
+import SourceMappings from 'src/components/SourceMappings.vue'
+// import SourceHealth from 'src/components/SourceHealth.vue'
 
 // Reactive data
 const $q = useQuasar()
 const dataSources = ref([])
 const selectedSource = ref(null)
-const activeTab = ref('connection')
-const showCreateDialog = ref(false)
-const showMappingDialog = ref(false)
-const editingSource = ref(null)
-
-// Connection testing
-const testingConnection = ref(false)
-const connectionStatus = ref(null)
-const connectionConfig = ref(null)
-
-// Schema discovery
-const discovering = ref(false)
-const discoveredSchema = ref({
-  measurements: [],
-  tags: [],
-  fields: []
-})
-const selectedMeasurement = ref(null)
-const sampleData = ref([])
-
-// Auto mapping
-const autoMapping = ref(false)
 const sourceMappings = ref([])
 const equipments = ref([])
 
-// Form data
-const dataSourceForm = ref({
-  source_name: '',
-  source_type: '',
-  connection_config: {}
+// UI State
+const activeTab = ref('overview')
+const searchQuery = ref('')
+const sourceFilter = ref('all')
+const loadingDataSources = ref(false)
+const testingConnection = ref(false)
+
+// Dialog states
+const showCreateWizard = ref(false)
+const showSchemaExplorer = ref(false)
+const showMappingWizard = ref(false)
+const showImportDialog = ref(false)
+const importFile = ref(null)
+
+// Schema and health data
+const discoveredSchema = ref({
+  measurements: [],
+  tags: {},
+  fields: {},
+  sampleData: {}
 })
+const sourceHealthStatus = ref({})
 
-const sourceTypeOptions = [
-  { label: 'InfluxDB', value: 'influxdb' },
-  { label: 'Parquet Files', value: 'parquet' }
-]
+// Computed properties
+const activeSourcesCount = computed(() =>
+  dataSources.value.filter(source => source.is_active).length
+)
 
-const testingConnectionForm = ref(false)
-const savingDataSource = ref(false)
-const showToken = ref(false)
-const formConnectionStatus = ref(null)
+const totalMappingsCount = computed(() =>
+  dataSources.value.reduce((total, source) => total + (source.mappings_count || 0), 0)
+)
 
-// Computed
-const sampleColumns = computed(() => {
-  if (sampleData.value.length === 0) return []
-  return Object.keys(sampleData.value[0]).map(key => ({
-    name: key,
-    label: key,
-    field: key,
-    align: 'left'
-  }))
-})
+const healthySourcesCount = computed(() =>
+  Object.values(sourceHealthStatus.value).filter(status => status?.healthy).length
+)
 
-const isFormValid = computed(() => {
-  if (!dataSourceForm.value.source_name || !dataSourceForm.value.source_type) {
-    return false
+const filteredDataSources = computed(() => {
+  let filtered = dataSources.value
+
+  // Apply search filter
+  if (searchQuery.value) {
+    const query = searchQuery.value.toLowerCase()
+    filtered = filtered.filter(source =>
+      source.source_name.toLowerCase().includes(query) ||
+      source.source_type.toLowerCase().includes(query)
+    )
   }
 
-  if (dataSourceForm.value.source_type === 'influxdb') {
-    const config = dataSourceForm.value.connection_config
-    return config.url && config.org && config.bucket && config.token
+  // Apply status filter
+  if (sourceFilter.value === 'active') {
+    filtered = filtered.filter(source => source.is_active)
+  } else if (sourceFilter.value === 'inactive') {
+    filtered = filtered.filter(source => !source.is_active)
   }
 
-  if (dataSourceForm.value.source_type === 'parquet') {
-    const config = dataSourceForm.value.connection_config
-    return config.base_path && config.path_pattern
-  }
-
-  return false
+  return filtered
 })
 
 // Methods
 onMounted(() => {
   fetchDataSources()
   fetchEquipments()
+  startHealthMonitoring()
 })
 
 const fetchDataSources = async () => {
+  loadingDataSources.value = true
   try {
     const response = await axios.get('http://localhost:8000/datasources/')
     dataSources.value = response.data
+
+    // Fetch mapping counts for each source
+    for (const source of dataSources.value) {
+      try {
+        const mappingsResponse = await axios.get(`http://localhost:8000/datasources/${source.source_id}/mappings`)
+        source.mappings_count = mappingsResponse.data.length
+      } catch (error) {
+        source.mappings_count = 0
+      }
+    }
   } catch (error) {
-    $q.notify({ type: 'negative', message: 'Failed to fetch data sources' })
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to fetch data sources',
+      caption: error.response?.data?.detail || error.message
+    })
+  } finally {
+    loadingDataSources.value = false
   }
 }
 
@@ -591,11 +575,11 @@ const fetchEquipments = async () => {
 
 const selectDataSource = async (source) => {
   selectedSource.value = source
-  connectionConfig.value = JSON.parse(source.connection_config)
-  activeTab.value = 'connection'
-
-  // Fetch mappings for this source
-  await fetchSourceMappings(source.source_id)
+  activeTab.value = 'overview'
+  await Promise.all([
+    fetchSourceMappings(source.source_id),
+    refreshHealthStatus(source.source_id)
+  ])
 }
 
 const fetchSourceMappings = async (sourceId) => {
@@ -603,221 +587,245 @@ const fetchSourceMappings = async (sourceId) => {
     const response = await axios.get(`http://localhost:8000/datasources/${sourceId}/mappings`)
     sourceMappings.value = response.data
   } catch (error) {
-    console.error('Failed to fetch mappings:', error)
+    console.error('Failed to fetch source mappings:', error)
+    sourceMappings.value = []
   }
 }
 
-const testConnection = async () => {
+const refreshDataSources = async () => {
+  await fetchDataSources()
+  if (selectedSource.value) {
+    // Update selected source data
+    const updatedSource = dataSources.value.find(s => s.source_id === selectedSource.value.source_id)
+    if (updatedSource) {
+      selectedSource.value = updatedSource
+    }
+  }
+}
+
+const testSourceConnection = async () => {
   if (!selectedSource.value) return
 
   testingConnection.value = true
   try {
+    const connectionConfig = JSON.parse(selectedSource.value.connection_config)
     const response = await axios.post('http://localhost:8000/datasources/test-connection', {
       source_type: selectedSource.value.source_type,
-      connection_config: connectionConfig.value
+      connection_config: connectionConfig
     })
-    connectionStatus.value = response.data
-  } catch (error) {
-    connectionStatus.value = {
-      success: false,
-      message: 'Connection test failed',
-      details: { error: error.message }
-    }
-  } finally {
-    testingConnection.value = false
-  }
-}
-
-const discoverSchema = async () => {
-  if (!selectedSource.value) return
-
-  discovering.value = true
-  try {
-    // Discover measurements
-    const measurementsResponse = await axios.get(
-      `http://localhost:8000/datasources/${selectedSource.value.source_id}/discover/measurements`
-    )
-    discoveredSchema.value.measurements = measurementsResponse.data.measurements
-
-    if (discoveredSchema.value.measurements.length > 0) {
-      await selectMeasurement(discoveredSchema.value.measurements[0])
-    }
-
-    activeTab.value = 'schema'
-    $q.notify({ type: 'positive', message: 'Schema discovered successfully' })
-  } catch (error) {
-    $q.notify({ type: 'negative', message: 'Failed to discover schema' })
-  } finally {
-    discovering.value = false
-  }
-}
-
-const selectMeasurement = async (measurement) => {
-  selectedMeasurement.value = measurement
-
-  try {
-    // Discover tags and fields for this measurement
-    const [tagsResponse, fieldsResponse, sampleResponse] = await Promise.all([
-      axios.post('http://localhost:8000/datasources/discover/tags', {
-        source_type: selectedSource.value.source_type,
-        connection_config: connectionConfig.value,
-        measurement
-      }),
-      axios.post('http://localhost:8000/datasources/discover/fields', {
-        source_type: selectedSource.value.source_type,
-        connection_config: connectionConfig.value,
-        measurement
-      }),
-      axios.post('http://localhost:8000/datasources/discover/sample', {
-        source_type: selectedSource.value.source_type,
-        connection_config: connectionConfig.value,
-        measurement
-      })
-    ])
-
-    discoveredSchema.value.tags = tagsResponse.data.tags
-    discoveredSchema.value.fields = fieldsResponse.data.fields
-    sampleData.value = sampleResponse.data.sample_data
-  } catch (error) {
-    console.error('Failed to discover measurement details:', error)
-  }
-}
-
-const autoMapMeasurements = async () => {
-  if (!selectedSource.value) return
-
-  autoMapping.value = true
-  try {
-    const response = await axios.post(
-      `http://localhost:8000/datasources/${selectedSource.value.source_id}/auto-map`
-    )
-
-    $q.notify({
-      type: 'positive',
-      message: response.data.message
-    })
-
-    await fetchSourceMappings(selectedSource.value.source_id)
-    activeTab.value = 'mappings'
-  } catch (error) {
-    $q.notify({ type: 'negative', message: 'Auto-mapping failed' })
-  } finally {
-    autoMapping.value = false
-  }
-}
-
-const editDataSource = (source) => {
-  editingSource.value = source
-  dataSourceForm.value = {
-    source_name: source.source_name,
-    source_type: source.source_type,
-    connection_config: JSON.parse(source.connection_config)
-  }
-  showCreateDialog.value = true
-}
-
-const resetConnectionConfig = () => {
-  formConnectionStatus.value = null // Clear previous test results
-
-  if (dataSourceForm.value.source_type === 'influxdb') {
-    dataSourceForm.value.connection_config = {
-      url: 'http://localhost:8086',
-      org: '',
-      bucket: '',
-      token: ''
-    }
-  } else if (dataSourceForm.value.source_type === 'parquet') {
-    dataSourceForm.value.connection_config = {
-      base_path: '',
-      path_pattern: '**/*.parquet'
-    }
-  }
-}
-
-const toggleTokenVisibility = () => {
-  showToken.value = !showToken.value
-  // Update input type
-  const tokenInput = document.querySelector('input[type="password"]')
-  if (tokenInput) {
-    tokenInput.type = showToken.value ? 'text' : 'password'
-  }
-}
-
-const browseFolder = () => {
-  // This would typically open a file browser
-  // For now, show a notification that this feature is coming
-  $q.notify({
-    message: 'File browser integration coming soon. Please enter path manually.',
-    type: 'info',
-    icon: 'info'
-  })
-}
-
-const testConnectionForm = async () => {
-  testingConnectionForm.value = true
-  formConnectionStatus.value = null
-
-  try {
-    const response = await axios.post('http://localhost:8000/datasources/test-connection', {
-      source_type: dataSourceForm.value.source_type,
-      connection_config: dataSourceForm.value.connection_config
-    })
-
-    formConnectionStatus.value = response.data
 
     $q.notify({
       type: response.data.success ? 'positive' : 'negative',
       message: response.data.message,
       icon: response.data.success ? 'check_circle' : 'error'
     })
-  } catch (error) {
-    formConnectionStatus.value = {
-      success: false,
-      message: 'Connection test failed',
-      details: { error: error.message }
-    }
 
+    // Update health status
+    sourceHealthStatus.value[selectedSource.value.source_id] = {
+      healthy: response.data.success,
+      lastChecked: new Date(),
+      details: response.data
+    }
+  } catch (error) {
     $q.notify({
       type: 'negative',
       message: 'Connection test failed',
       caption: error.response?.data?.detail || error.message
     })
   } finally {
-    testingConnectionForm.value = false
+    testingConnection.value = false
   }
 }
 
-const saveDataSource = async () => {
-  savingDataSource.value = true
+const discoverSourceSchema = async () => {
+  if (!selectedSource.value) return
+
   try {
-    if (editingSource.value) {
-      await axios.put(
-        `http://localhost:8000/datasources/${editingSource.value.source_id}`,
-        dataSourceForm.value
-      )
-      $q.notify({ type: 'positive', message: 'Data source updated' })
-    } else {
-      await axios.post('http://localhost:8000/datasources/', dataSourceForm.value)
-      $q.notify({ type: 'positive', message: 'Data source created' })
+    const response = await axios.get(`http://localhost:8000/datasources/${selectedSource.value.source_id}/discover/measurements`)
+    discoveredSchema.value.measurements = response.data.measurements
+  } catch (error) {
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to discover schema',
+      caption: error.response?.data?.detail || error.message
+    })
+  }
+}
+
+const refreshSchema = async () => {
+  await discoverSourceSchema()
+}
+
+const refreshHealthStatus = async (sourceId) => {
+  // This would typically check the actual connection health
+  // For now, we'll use the last known status or mark as unknown
+  if (!sourceHealthStatus.value[sourceId]) {
+    sourceHealthStatus.value[sourceId] = {
+      healthy: null,
+      lastChecked: null,
+      details: null
+    }
+  }
+}
+
+const startHealthMonitoring = () => {
+  // Set up periodic health checks every 5 minutes
+  setInterval(() => {
+    dataSources.value.forEach(source => {
+      if (source.is_active) {
+        refreshHealthStatus(source.source_id)
+      }
+    })
+  }, 5 * 60 * 1000) // 5 minutes
+}
+
+// Source type helpers
+const getSourceTypeColor = (type) => {
+  const colors = {
+    influxdb: 'deep-purple',
+    parquet: 'blue-grey'
+  }
+  return colors[type] || 'grey'
+}
+
+const getSourceTypeIcon = (type) => {
+  const icons = {
+    influxdb: 'timeline',
+    parquet: 'folder_special'
+  }
+  return icons[type] || 'storage'
+}
+
+// Health status helpers
+const getHealthIcon = (sourceId) => {
+  const status = sourceHealthStatus.value[sourceId]
+  if (!status || status.healthy === null) return 'help'
+  return status.healthy ? 'check_circle' : 'error'
+}
+
+const getHealthColor = (sourceId) => {
+  const status = sourceHealthStatus.value[sourceId]
+  if (!status || status.healthy === null) return 'grey'
+  return status.healthy ? 'positive' : 'negative'
+}
+
+const getHealthTooltip = (sourceId) => {
+  const status = sourceHealthStatus.value[sourceId]
+  if (!status || status.healthy === null) return 'Health status unknown'
+  return status.healthy ? 'Connection healthy' : 'Connection issues detected'
+}
+
+// Utility functions
+const formatDate = (dateString) => {
+  return new Date(dateString).toLocaleDateString()
+}
+
+// Event handlers
+const onSourceCreated = async (newSource) => {
+  await fetchDataSources()
+  selectedSource.value = newSource
+}
+
+const onSchemaDiscovered = (schema) => {
+  discoveredSchema.value = { ...discoveredSchema.value, ...schema }
+}
+
+const onMappingCreated = async () => {
+  if (selectedSource.value) {
+    await fetchSourceMappings(selectedSource.value.source_id)
+  }
+}
+
+const refreshSourceData = async () => {
+  if (selectedSource.value) {
+    await Promise.all([
+      fetchSourceMappings(selectedSource.value.source_id),
+      refreshHealthStatus(selectedSource.value.source_id)
+    ])
+  }
+}
+
+// CRUD operations
+const editDataSource = (source) => {
+  // TODO: Implement edit functionality
+  $q.notify({ message: 'Edit functionality coming soon', type: 'info' })
+}
+
+const cloneDataSource = async (source) => {
+  try {
+    const clonedData = {
+      source_name: `${source.source_name} (Copy)`,
+      source_type: source.source_type,
+      connection_config: JSON.parse(source.connection_config)
     }
 
+    const response = await axios.post('http://localhost:8000/datasources/', clonedData)
     await fetchDataSources()
-    cancelDialog()
+
+    $q.notify({
+      type: 'positive',
+      message: 'Data source cloned successfully'
+    })
   } catch (error) {
-    $q.notify({ type: 'negative', message: 'Failed to save data source' })
-  } finally {
-    savingDataSource.value = false
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to clone data source',
+      caption: error.response?.data?.detail || error.message
+    })
   }
 }
 
-const cancelDialog = () => {
-  showCreateDialog.value = false
-  editingSource.value = null
-  formConnectionStatus.value = null
-  dataSourceForm.value = {
-    source_name: '',
-    source_type: '',
-    connection_config: {}
+const exportDataSource = (source) => {
+  const exportData = {
+    source_name: source.source_name,
+    source_type: source.source_type,
+    connection_config: JSON.parse(source.connection_config)
+  }
+
+  const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `${source.source_name.replace(/\s+/g, '_')}_config.json`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+
+  $q.notify({
+    type: 'positive',
+    message: 'Configuration exported successfully'
+  })
+}
+
+const importConfiguration = async () => {
+  if (!importFile.value) return
+
+  try {
+    const text = await importFile.value.text()
+    const config = JSON.parse(text)
+
+    // Validate config structure
+    if (!config.source_name || !config.source_type || !config.connection_config) {
+      throw new Error('Invalid configuration file format')
+    }
+
+    const response = await axios.post('http://localhost:8000/datasources/', config)
+    await fetchDataSources()
+
+    showImportDialog.value = false
+    importFile.value = null
+
+    $q.notify({
+      type: 'positive',
+      message: 'Configuration imported successfully'
+    })
+  } catch (error) {
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to import configuration',
+      caption: error.message
+    })
   }
 }
 
@@ -825,85 +833,125 @@ const toggleDataSource = async (source) => {
   try {
     await axios.post(`http://localhost:8000/datasources/${source.source_id}/toggle`)
     await fetchDataSources()
+
     $q.notify({
       type: 'positive',
       message: `Data source ${source.is_active ? 'deactivated' : 'activated'}`
     })
   } catch (error) {
-    $q.notify({ type: 'negative', message: 'Failed to toggle data source' })
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to toggle data source',
+      caption: error.response?.data?.detail || error.message
+    })
   }
 }
 
 const deleteDataSource = (source) => {
   $q.dialog({
-    title: 'Confirm',
-    message: `Are you sure you want to delete "${source.source_name}"?`,
+    title: 'Confirm Deletion',
+    message: `Are you sure you want to delete "${source.source_name}"? This action cannot be undone.`,
     cancel: true,
-    persistent: true
+    persistent: true,
+    color: 'negative'
   }).onOk(async () => {
     try {
       await axios.delete(`http://localhost:8000/datasources/${source.source_id}`)
       await fetchDataSources()
+
       if (selectedSource.value?.source_id === source.source_id) {
         selectedSource.value = null
       }
-      $q.notify({ type: 'positive', message: 'Data source deleted' })
+
+      $q.notify({
+        type: 'positive',
+        message: 'Data source deleted successfully'
+      })
     } catch (error) {
-      $q.notify({ type: 'negative', message: 'Failed to delete data source' })
+      $q.notify({
+        type: 'negative',
+        message: 'Failed to delete data source',
+        caption: error.response?.data?.detail || error.message
+      })
     }
   })
+}
+
+const updateSourceConfig = async (config) => {
+  // TODO: Implement config update
+  $q.notify({ message: 'Config update functionality coming soon', type: 'info' })
+}
+
+const editMapping = (mapping) => {
+  // TODO: Implement edit mapping functionality
+  $q.notify({ message: 'Edit mapping functionality coming soon', type: 'info' })
 }
 
 const deleteMapping = (mapping) => {
   $q.dialog({
-    title: 'Confirm',
+    title: 'Confirm Deletion',
     message: 'Are you sure you want to delete this mapping?',
     cancel: true,
-    persistent: true
+    persistent: true,
+    color: 'negative'
   }).onOk(async () => {
     try {
       await axios.delete(`http://localhost:8000/datasources/mappings/${mapping.mapping_id}`)
       await fetchSourceMappings(selectedSource.value.source_id)
-      $q.notify({ type: 'positive', message: 'Mapping deleted' })
+
+      $q.notify({
+        type: 'positive',
+        message: 'Mapping deleted successfully'
+      })
     } catch (error) {
-      $q.notify({ type: 'negative', message: 'Failed to delete mapping' })
+      $q.notify({
+        type: 'negative',
+        message: 'Failed to delete mapping',
+        caption: error.response?.data?.detail || error.message
+      })
     }
   })
-}
-
-const getEquipmentName = (equipmentId) => {
-  const equipment = equipments.value.find(eq => eq.id === equipmentId)
-  return equipment ? equipment.name : `Equipment ${equipmentId}`
-}
-
-const viewMapping = (mapping) => {
-  $q.dialog({
-    title: 'Mapping Details',
-    message: `
-      Equipment: ${getEquipmentName(mapping.equipment_id)}
-      Measurement: ${mapping.measurement_name}
-      Tags: ${mapping.tag_mappings}
-      Fields: ${mapping.field_mappings}
-    `
-  })
-}
-
-const editMapping = (mapping) => {
-  // TODO: Implement edit mapping dialog
-  $q.notify({ message: 'Edit mapping functionality coming soon' })
-}
-
-const onMappingCreated = async () => {
-  await fetchSourceMappings(selectedSource.value.source_id)
 }
 </script>
 
 <style scoped>
 .q-card {
-  border-radius: 8px;
+  border-radius: 12px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
 }
 
 .q-tab-panel {
   padding: 0;
+}
+
+.q-chip {
+  font-weight: 500;
+}
+
+.bg-blue-1 {
+  background-color: rgba(25, 118, 210, 0.1);
+}
+
+/* Custom scrollbar for lists */
+.q-list {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.q-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.q-list::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+.q-list::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 2px;
+}
+
+.q-list::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
 }
 </style>
