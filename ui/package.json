@@ -1,7 +1,7 @@
 {
-  "name": "ui",
+ "name": "asset-monitoring-ui",
   "version": "0.0.1",
-  "description": "Monitoring system",
+  "description": "Asset Monitoring System Frontend",
   "productName": "Asset Monitoring System",
   "author": "Sandeep.Alagandula <sandeep.alagandula@tmeic.in>",
   "type": "module",
