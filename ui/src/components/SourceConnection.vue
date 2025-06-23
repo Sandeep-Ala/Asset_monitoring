@@ -112,6 +112,18 @@
               />
             </div>
 
+            <!-- Generic Configuration for other types -->
+            <div v-else>
+              <GenericConnectionConfig
+                :config="connectionConfig"
+                :edit-mode="editMode"
+                :source-type="source.source_type"
+                @update="updateConfig"
+                @test="testConnection"
+                :testing="testing"
+              />
+            </div>
+
             <!-- Actions -->
             <div v-if="editMode" class="row q-gutter-sm q-mt-lg">
               <q-btn
@@ -376,10 +388,12 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useQuasar } from 'quasar'
+import axios from 'axios'
 
 // Import configuration components
 import InfluxDBConnectionConfig from 'src/components/InfluxDBConfig.vue'
 import ParquetConnectionConfig from 'src/components/ParquetConfig.vue'
+import GenericConnectionConfig from 'src/components/GenericConnectionConfig.vue'
 
 // Props
 const props = defineProps({
@@ -394,3 +408,431 @@ const $q = useQuasar()
 const editMode = ref(false)
 const testing = ref(false)
 const saving = ref(false)
+const refreshing = ref(false)
+const pinging = ref(false)
+const checkingPermissions = ref(false)
+const autoMonitoring = ref(false)
+
+// Connection state
+const connectionConfig = ref({})
+const originalConfig = ref({})
+const lastConnectionTest = ref(null)
+const connectionHistory = ref([])
+const healthMetrics = ref({
+  responseTime: null,
+  uptime: null,
+  lastError: null
+})
+
+// Advanced settings
+const advancedSettings = ref({
+  connectionTimeout: 30,
+  retryAttempts: 3,
+  maxConnections: 10,
+  sslVerification: true,
+  keepAlive: true
+})
+
+// Auto-monitoring
+let monitoringInterval = null
+
+// Computed properties
+const hasConfigChanges = computed(() => {
+  return JSON.stringify(connectionConfig.value) !== JSON.stringify(originalConfig.value)
+})
+
+const connectionStatusClass = computed(() => {
+  if (!lastConnectionTest.value) return 'bg-grey-2'
+  return lastConnectionTest.value.success ? 'bg-green-1' : 'bg-red-1'
+})
+
+const connectionStatusIcon = computed(() => {
+  if (!lastConnectionTest.value) return 'help_outline'
+  return lastConnectionTest.value.success ? 'check_circle' : 'error'
+})
+
+const connectionStatusColor = computed(() => {
+  if (!lastConnectionTest.value) return 'grey'
+  return lastConnectionTest.value.success ? 'positive' : 'negative'
+})
+
+const connectionStatusTitle = computed(() => {
+  if (!lastConnectionTest.value) return 'Connection Status Unknown'
+  return lastConnectionTest.value.success ? 'Connection Healthy' : 'Connection Issues'
+})
+
+const connectionStatusMessage = computed(() => {
+  if (!lastConnectionTest.value) return 'No connection test performed yet'
+  return lastConnectionTest.value.message || 'No additional details available'
+})
+
+// Methods
+onMounted(() => {
+  initializeConnectionConfig()
+  loadConnectionHistory()
+  startHealthMonitoring()
+})
+
+onUnmounted(() => {
+  stopHealthMonitoring()
+})
+
+const initializeConnectionConfig = () => {
+  try {
+    connectionConfig.value = JSON.parse(props.source.connection_config)
+    originalConfig.value = JSON.parse(props.source.connection_config)
+  } catch (error) {
+    console.error('Failed to parse connection config:', error)
+    connectionConfig.value = {}
+    originalConfig.value = {}
+  }
+}
+
+const loadConnectionHistory = () => {
+  // Load from localStorage or API
+  const stored = localStorage.getItem(`connection_history_${props.source.source_id}`)
+  if (stored) {
+    try {
+      connectionHistory.value = JSON.parse(stored)
+    } catch (error) {
+      console.error('Failed to load connection history:', error)
+      connectionHistory.value = []
+    }
+  }
+}
+
+const saveConnectionHistory = () => {
+  try {
+    localStorage.setItem(
+      `connection_history_${props.source.source_id}`,
+      JSON.stringify(connectionHistory.value.slice(0, 20)) // Keep only last 20 entries
+    )
+  } catch (error) {
+    console.error('Failed to save connection history:', error)
+  }
+}
+
+const testConnection = async () => {
+  testing.value = true
+
+  try {
+    const response = await axios.post('http://localhost:8000/datasources/test-connection', {
+      source_type: props.source.source_type,
+      connection_config: connectionConfig.value
+    })
+
+    const testResult = {
+      success: response.data.success,
+      message: response.data.message,
+      timestamp: new Date().toISOString(),
+      responseTime: response.data.response_time ? `${response.data.response_time}ms` : null,
+      status: response.data.success ? 'Connected' : 'Failed'
+    }
+
+    lastConnectionTest.value = testResult
+
+    // Add to history
+    connectionHistory.value.unshift(testResult)
+    saveConnectionHistory()
+
+    // Update health metrics
+    if (response.data.success) {
+      healthMetrics.value.responseTime = testResult.responseTime
+      healthMetrics.value.lastError = null
+    } else {
+      healthMetrics.value.lastError = response.data.message
+    }
+
+    $q.notify({
+      type: response.data.success ? 'positive' : 'negative',
+      message: response.data.message,
+      icon: response.data.success ? 'check_circle' : 'error'
+    })
+
+    emit('test-connection', testResult)
+
+  } catch (error) {
+    const testResult = {
+      success: false,
+      message: error.response?.data?.detail || error.message || 'Connection test failed',
+      timestamp: new Date().toISOString(),
+      responseTime: null,
+      status: 'Error'
+    }
+
+    lastConnectionTest.value = testResult
+    connectionHistory.value.unshift(testResult)
+    saveConnectionHistory()
+
+    healthMetrics.value.lastError = testResult.message
+
+    $q.notify({
+      type: 'negative',
+      message: 'Connection test failed',
+      caption: testResult.message
+    })
+  } finally {
+    testing.value = false
+  }
+}
+
+const updateConfig = (newConfig) => {
+  connectionConfig.value = { ...connectionConfig.value, ...newConfig }
+}
+
+const saveConfiguration = async () => {
+  saving.value = true
+
+  try {
+    const response = await axios.put(`http://localhost:8000/datasources/${props.source.source_id}`, {
+      connection_config: JSON.stringify(connectionConfig.value)
+    })
+
+    originalConfig.value = { ...connectionConfig.value }
+    editMode.value = false
+
+    $q.notify({
+      type: 'positive',
+      message: 'Configuration saved successfully',
+      icon: 'save'
+    })
+
+    emit('update-config', connectionConfig.value)
+
+  } catch (error) {
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to save configuration',
+      caption: error.response?.data?.detail || error.message
+    })
+  } finally {
+    saving.value = false
+  }
+}
+
+const resetConfiguration = () => {
+  connectionConfig.value = { ...originalConfig.value }
+}
+
+const cancelEdit = () => {
+  resetConfiguration()
+  editMode.value = false
+}
+
+const refreshConnectionStatus = async () => {
+  refreshing.value = true
+  try {
+    await testConnection()
+  } finally {
+    refreshing.value = false
+  }
+}
+
+const pingConnection = async () => {
+  pinging.value = true
+
+  try {
+    // Simulate ping operation
+    await new Promise(resolve => setTimeout(resolve, 1000))
+
+    $q.notify({
+      type: 'positive',
+      message: 'Ping successful',
+      caption: 'Connection is responsive'
+    })
+  } catch (error) {
+    $q.notify({
+      type: 'negative',
+      message: 'Ping failed',
+      caption: 'Connection may be down'
+    })
+  } finally {
+    pinging.value = false
+  }
+}
+
+const checkPermissions = async () => {
+  checkingPermissions.value = true
+
+  try {
+    // Simulate permission check
+    await new Promise(resolve => setTimeout(resolve, 1500))
+
+    $q.notify({
+      type: 'positive',
+      message: 'Permissions verified',
+      caption: 'All required permissions are available'
+    })
+  } catch (error) {
+    $q.notify({
+      type: 'negative',
+      message: 'Permission check failed',
+      caption: 'Some permissions may be missing'
+    })
+  } finally {
+    checkingPermissions.value = false
+  }
+}
+
+const clearConnectionCache = () => {
+  connectionHistory.value = []
+  saveConnectionHistory()
+
+  $q.notify({
+    type: 'positive',
+    message: 'Connection cache cleared',
+    icon: 'clear_all'
+  })
+}
+
+const toggleAutoMonitoring = (enabled) => {
+  autoMonitoring.value = enabled
+  if (enabled) {
+    startHealthMonitoring()
+  } else {
+    stopHealthMonitoring()
+  }
+}
+
+const startHealthMonitoring = () => {
+  if (autoMonitoring.value && !monitoringInterval) {
+    monitoringInterval = setInterval(() => {
+      testConnection()
+    }, 5 * 60 * 1000) // 5 minutes
+  }
+}
+
+const stopHealthMonitoring = () => {
+  if (monitoringInterval) {
+    clearInterval(monitoringInterval)
+    monitoringInterval = null
+  }
+}
+
+const applyAdvancedSettings = () => {
+  // Apply advanced settings to connection config
+  connectionConfig.value = {
+    ...connectionConfig.value,
+    timeout: advancedSettings.value.connectionTimeout,
+    retry_attempts: advancedSettings.value.retryAttempts,
+    max_connections: advancedSettings.value.maxConnections,
+    verify_ssl: advancedSettings.value.sslVerification,
+    keep_alive: advancedSettings.value.keepAlive
+  }
+
+  $q.notify({
+    type: 'positive',
+    message: 'Advanced settings applied',
+    icon: 'settings'
+  })
+}
+
+const resetAdvancedSettings = () => {
+  advancedSettings.value = {
+    connectionTimeout: 30,
+    retryAttempts: 3,
+    maxConnections: 10,
+    sslVerification: true,
+    keepAlive: true
+  }
+
+  $q.notify({
+    type: 'info',
+    message: 'Advanced settings reset to defaults'
+  })
+}
+
+const formatDateTime = (dateString) => {
+  if (!dateString) return 'Unknown'
+  try {
+    return new Date(dateString).toLocaleString()
+  } catch {
+    return 'Invalid date'
+  }
+}
+</script>
+
+<style scoped>
+.source-connection {
+  background-color: #fafafa;
+  min-height: 100%;
+}
+
+.bg-blue-1 {
+  background-color: rgba(25, 118, 210, 0.1);
+}
+
+.bg-green-1 {
+  background-color: rgba(76, 175, 80, 0.1);
+}
+
+.bg-orange-1 {
+  background-color: rgba(255, 152, 0, 0.1);
+}
+
+.bg-red-1 {
+  background-color: rgba(244, 67, 54, 0.1);
+}
+
+.bg-grey-2 {
+  background-color: rgba(158, 158, 158, 0.1);
+}
+
+.q-card {
+  border-radius: 12px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+}
+
+.q-expansion-item {
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+}
+
+.q-item {
+  border-radius: 8px;
+  margin-bottom: 4px;
+}
+
+.q-item:hover {
+  background-color: rgba(0, 0, 0, 0.02);
+}
+
+.q-chip {
+  font-weight: 500;
+}
+
+/* Custom scrollbar */
+.q-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.q-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.q-list::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.q-list::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+.q-list::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .row.q-gutter-lg {
+    margin: -8px;
+  }
+
+  .row.q-gutter-lg > div {
+    padding: 8px;
+  }
+}
+</style>

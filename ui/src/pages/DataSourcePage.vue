@@ -461,10 +461,10 @@ import DataSourceWizard from 'src/components/DataSourceWizard.vue'
 import SchemaExplorer from 'src/components/SchemaExplorer.vue'
 import MappingWizard from 'src/components/MappingWizard.vue'
 import SourceOverview from 'src/components/SourceOverview.vue'
-// import SourceConnection from 'src/components/SourceConnection.vue'
-// import SourceSchema from 'src/components/SourceSchema.vue'
+import SourceConnection from 'src/components/SourceConnection.vue'
+import SourceSchema from 'src/components/SourceSchema.vue'
 import SourceMappings from 'src/components/SourceMappings.vue'
-// import SourceHealth from 'src/components/SourceHealth.vue'
+import SourceHealth from 'src/components/SourceHealth.vue'
 
 // Reactive data
 const $q = useQuasar()

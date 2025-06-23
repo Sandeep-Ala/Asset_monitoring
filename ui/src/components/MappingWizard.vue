@@ -1176,48 +1176,4 @@ watch(() => props.discoveredSchema, (newSchema) => {
 .q-list::-webkit-scrollbar-thumb:hover {
   background: #a8a8a8;
 }
-</style> {
-    loadingMeasurements.value = false
-  }
-}
-
-const discoverTags = async () => {
-  if (!props.source || !mappingForm.value.measurement_name) return
-
-  discoveringTags.value = true
-  try {
-    const response = await axios.post('http://localhost:8000/datasources/discover/tags', {
-      source_type: props.source.source_type,
-      connection_config: JSON.parse(props.source.connection_config),
-      measurement: mappingForm.value.measurement_name
-    })
-
-    discoveredTags.value = response.data.tags || []
-  } catch (error) {
-    $q.notify({
-      type: 'negative',
-      message: 'Failed to discover tags'
-    })
-  } finally {
-    discoveringTags.value = false
-  }
-}
-
-const discoverFields = async () => {
-  if (!props.source || !mappingForm.value.measurement_name) return
-
-  discoveringFields.value = true
-  try {
-    const response = await axios.post('http://localhost:8000/datasources/discover/fields', {
-      source_type: props.source.source_type,
-      connection_config: JSON.parse(props.source.connection_config),
-      measurement: mappingForm.value.measurement_name
-    })
-
-    discoveredFields.value = response.data.fields || []
-  } catch (error) {
-    $q.notify({
-      type: 'negative',
-      message: 'Failed to discover fields'
-    })
-  } finally
+</style>
