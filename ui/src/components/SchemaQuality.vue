@@ -1,44 +1,250 @@
 <!-- ui/src/components/SchemaQuality.vue -->
-<!-- Schema quality assessment component -->
+<!-- Schema quality assessment component - Enhanced version -->
 
 <template>
   <div class="schema-quality">
-    <!-- Quality Assessment Controls -->
+    <!-- Quality Assessment Header -->
     <div class="row q-gutter-md q-mb-lg">
       <div class="col-12">
         <q-card flat bordered>
-          <q-card-section class="bg-red-1">
+          <q-card-section class="bg-gradient-primary text-white">
+            <div class="row items-center justify-between">
+              <div>
+                <div class="text-h6 q-mb-xs">
+                  <q-icon name="verified" class="q-mr-sm" />
+                  Schema Quality Assessment
+                </div>
+                <div class="text-body2 opacity-80">
+                  Comprehensive data quality analysis and monitoring
+                </div>
+              </div>
+              <div class="text-center">
+                <q-circular-progress
+                  :value="overallQualityScore"
+                  size="80px"
+                  :thickness="0.12"
+                  color="white"
+                  track-color="rgba(255,255,255,0.3)"
+                  show-value
+                  font-size="18px"
+                  class="text-white"
+                />
+                <div class="text-caption q-mt-xs">Overall Score</div>
+              </div>
+            </div>
+          </q-card-section>
+
+          <!-- Quick Controls -->
+          <q-card-section class="q-pt-md">
+            <div class="row q-gutter-md items-end">
+              <div class="col-12 col-md-3">
+                <q-select
+                  v-model="assessmentScope"
+                  :options="scopeOptions"
+                  label="Assessment Scope"
+                  outlined
+                  dense
+                  @update:model-value="onScopeChange"
+                />
+              </div>
+
+              <div class="col-12 col-md-4">
+                <q-select
+                  v-model="selectedDimensions"
+                  :options="dimensionOptions"
+                  label="Quality Dimensions"
+                  multiple
+                  use-chips
+                  outlined
+                  dense
+                  @update:model-value="onDimensionsChange"
+                />
+              </div>
+
+              <div class="col-12 col-md-3">
+                <q-select
+                  v-model="severityFilter"
+                  :options="severityFilterOptions"
+                  label="Issue Severity"
+                  outlined
+                  dense
+                  @update:model-value="onSeverityChange"
+                />
+              </div>
+
+              <div class="col-12 col-md-2">
+                <q-btn
+                  label="Run Assessment"
+                  icon="play_arrow"
+                  color="primary"
+                  class="full-width"
+                  @click="runQualityAssessment"
+                  :loading="isAssessing"
+                />
+              </div>
+            </div>
+          </q-card-section>
+        </q-card>
+      </div>
+    </div>
+
+    <!-- Quality Dimensions Dashboard -->
+    <div class="row q-gutter-md q-mb-lg">
+      <div class="col-12">
+        <q-card flat bordered>
+          <q-card-section class="bg-blue-1">
             <div class="text-h6">
-              <q-icon name="verified" class="q-mr-sm" />
-              Schema Quality Assessment
+              <q-icon name="dashboard" class="q-mr-sm" />
+              Quality Dimensions
+            </div>
+          </q-card-section>
+          <q-card-section>
+            <div v-if="!hasAssessmentData" class="text-center q-pa-xl">
+              <q-icon name="assessment" size="4rem" class="text-grey-4 q-mb-md" />
+              <div class="text-h6 text-grey-6">No Assessment Data</div>
+              <div class="text-body2 text-grey-5 q-mb-lg">
+                Run a quality assessment to see detailed quality metrics
+              </div>
+              <q-btn
+                label="Start Assessment"
+                icon="play_arrow"
+                color="primary"
+                size="lg"
+                @click="runQualityAssessment"
+                :loading="isAssessing"
+              />
             </div>
 
-    <!-- Quality Issues -->
+            <div v-else class="row q-gutter-md">
+              <div
+                v-for="dimension in qualityDimensions"
+                :key="dimension.id"
+                class="col-12 col-sm-6 col-md-4 col-lg-3"
+              >
+                <q-card
+                  flat
+                  :class="getDimensionCardClass(dimension.score)"
+                  @click="showDimensionDetails(dimension)"
+                  style="cursor: pointer"
+                >
+                  <q-card-section class="text-center q-pb-sm">
+                    <q-icon :name="dimension.icon" size="2rem" :color="getDimensionColor(dimension.score)" />
+                    <div class="text-h6 q-mt-sm">{{ dimension.name }}</div>
+                  </q-card-section>
+
+                  <q-card-section class="text-center q-pt-none">
+                    <q-circular-progress
+                      :value="dimension.score"
+                      size="60px"
+                      :thickness="0.15"
+                      :color="getDimensionColor(dimension.score)"
+                      track-color="grey-3"
+                      show-value
+                      font-size="14px"
+                    />
+                    <div class="text-caption q-mt-sm text-grey-6">
+                      {{ dimension.description }}
+                    </div>
+                  </q-card-section>
+
+                  <q-card-section class="q-pt-none">
+                    <div class="row items-center justify-between">
+                      <q-chip
+                        :color="getDimensionColor(dimension.score)"
+                        text-color="white"
+                        size="sm"
+                      >
+                        {{ getScoreGrade(dimension.score) }}
+                      </q-chip>
+                      <div class="text-caption text-grey-6">
+                        {{ dimension.issueCount }} issues
+                      </div>
+                    </div>
+                  </q-card-section>
+                </q-card>
+              </div>
+            </div>
+          </q-card-section>
+        </q-card>
+      </div>
+    </div>
+
+    <!-- Issues Management -->
     <div class="row q-gutter-md q-mb-lg">
       <div class="col-12">
         <q-card flat bordered>
           <q-card-section class="bg-orange-1">
-            <div class="text-h6">
-              <q-icon name="warning" class="q-mr-sm" />
-              Quality Issues ({{ filteredIssues.length }})
+            <div class="row items-center justify-between">
+              <div class="text-h6">
+                <q-icon name="warning" class="q-mr-sm" />
+                Quality Issues ({{ filteredIssues.length }})
+              </div>
+              <div class="q-gutter-sm">
+                <q-btn
+                  label="Fix All Critical"
+                  icon="build"
+                  color="negative"
+                  size="sm"
+                  outline
+                  @click="fixCriticalIssues"
+                  :loading="isBulkFixing"
+                  :disable="!hasCriticalIssues"
+                />
+                <q-btn
+                  label="Export Report"
+                  icon="download"
+                  color="primary"
+                  size="sm"
+                  outline
+                  @click="exportQualityReport"
+                />
+              </div>
             </div>
           </q-card-section>
-          <q-card-section>
-            <div v-if="filteredIssues.length === 0" class="text-center q-pa-lg">
+
+          <q-card-section class="q-pa-none">
+            <div v-if="filteredIssues.length === 0" class="text-center q-pa-xl">
               <q-icon name="check_circle" size="3rem" color="positive" class="q-mb-md" />
               <div class="text-h6 text-positive">No Quality Issues Found</div>
               <div class="text-body2 text-grey-6">
-                Your schema meets all quality standards for the selected scope
+                {{ severityFilter === 'all' ? 'Your schema meets all quality standards' : 'No issues match the current filter' }}
               </div>
             </div>
+
             <q-table
               v-else
               :rows="filteredIssues"
               :columns="issueColumns"
               row-key="id"
               flat
-              :pagination="{ rowsPerPage: 15 }"
+              :pagination="issuesPagination"
+              :loading="isAssessing"
+              @row-click="viewIssueDetails"
             >
+              <template #top>
+                <div class="row full-width items-center q-gutter-md">
+                  <q-input
+                    v-model="issueSearchQuery"
+                    placeholder="Search issues..."
+                    dense
+                    clearable
+                    class="col-grow"
+                  >
+                    <template #prepend>
+                      <q-icon name="search" />
+                    </template>
+                  </q-input>
+
+                  <q-btn-toggle
+                    v-model="issueViewMode"
+                    :options="viewModeOptions"
+                    size="sm"
+                    color="primary"
+                    outline
+                  />
+                </div>
+              </template>
+
               <template #body-cell-severity="props">
                 <q-td :props="props">
                   <q-chip
@@ -51,6 +257,7 @@
                   </q-chip>
                 </q-td>
               </template>
+
               <template #body-cell-category="props">
                 <q-td :props="props">
                   <q-chip
@@ -62,6 +269,16 @@
                   </q-chip>
                 </q-td>
               </template>
+
+              <template #body-cell-status="props">
+                <q-td :props="props">
+                  <q-badge
+                    :color="getStatusColor(props.value)"
+                    :label="props.value"
+                  />
+                </q-td>
+              </template>
+
               <template #body-cell-actions="props">
                 <q-td :props="props">
                   <div class="q-gutter-xs">
@@ -70,28 +287,54 @@
                       flat
                       round
                       size="sm"
-                      @click="viewIssueDetails(props.row)"
+                      @click.stop="viewIssueDetails(props.row)"
                     >
                       <q-tooltip>View Details</q-tooltip>
                     </q-btn>
+
+                    <q-btn
+                      v-if="props.row.canAutoFix"
+                      icon="auto_fix_high"
+                      flat
+                      round
+                      size="sm"
+                      color="primary"
+                      @click.stop="autoFixIssue(props.row)"
+                      :loading="fixingIssues.includes(props.row.id)"
+                    >
+                      <q-tooltip>Auto Fix</q-tooltip>
+                    </q-btn>
+
                     <q-btn
                       icon="build"
                       flat
                       round
                       size="sm"
-                      color="primary"
-                      @click="fixIssue(props.row)"
+                      color="secondary"
+                      @click.stop="manualFixIssue(props.row)"
                       :loading="fixingIssues.includes(props.row.id)"
                     >
-                      <q-tooltip>Fix Issue</q-tooltip>
+                      <q-tooltip>Manual Fix</q-tooltip>
                     </q-btn>
+
+                    <q-btn
+                      icon="schedule"
+                      flat
+                      round
+                      size="sm"
+                      color="warning"
+                      @click.stop="scheduleIssue(props.row)"
+                    >
+                      <q-tooltip>Schedule Fix</q-tooltip>
+                    </q-btn>
+
                     <q-btn
                       icon="visibility_off"
                       flat
                       round
                       size="sm"
                       color="grey"
-                      @click="ignoreIssue(props.row)"
+                      @click.stop="ignoreIssue(props.row)"
                     >
                       <q-tooltip>Ignore</q-tooltip>
                     </q-btn>
@@ -104,8 +347,9 @@
       </div>
     </div>
 
-    <!-- Quality Trends -->
+    <!-- Quality Analytics -->
     <div class="row q-gutter-md q-mb-lg">
+      <!-- Quality Trends -->
       <div class="col-12 col-md-6">
         <q-card flat bordered>
           <q-card-section class="bg-green-1">
@@ -118,12 +362,14 @@
             <div v-if="qualityTrends.length === 0" class="text-center q-pa-md text-grey-6">
               <q-icon name="timeline" size="2rem" class="q-mb-sm" />
               <div>No trend data available</div>
+              <div class="text-caption">Run multiple assessments to see trends</div>
             </div>
+
             <div v-else>
-              <!-- Simple trend visualization -->
-              <div v-for="trend in qualityTrends" :key="trend.dimension" class="q-mb-md">
-                <div class="row items-center q-gutter-sm q-mb-xs">
-                  <div class="text-body2">{{ trend.dimension }}</div>
+              <div v-for="trend in qualityTrends" :key="trend.dimension" class="q-mb-lg">
+                <div class="row items-center q-gutter-sm q-mb-sm">
+                  <q-icon :name="getDimensionIcon(trend.dimension)" color="primary" />
+                  <div class="text-subtitle2">{{ trend.dimension }}</div>
                   <q-space />
                   <q-chip
                     :color="getTrendColor(trend.direction)"
@@ -134,13 +380,28 @@
                     {{ trend.change }}%
                   </q-chip>
                 </div>
+
                 <q-linear-progress
                   :value="trend.currentScore / 100"
-                  :color="getScoreColor(trend.currentScore)"
+                  :color="getDimensionColor(trend.currentScore)"
                   size="12px"
+                  class="q-mb-xs"
                 />
-                <div class="text-caption text-grey-6 q-mt-xs">
+
+                <div class="text-caption text-grey-6">
                   {{ trend.description }}
+                </div>
+
+                <div class="row q-gutter-xs q-mt-sm">
+                  <q-chip
+                    v-for="period in trend.periods"
+                    :key="period.label"
+                    size="xs"
+                    outline
+                    :color="getDimensionColor(period.score)"
+                  >
+                    {{ period.label }}: {{ period.score }}%
+                  </q-chip>
                 </div>
               </div>
             </div>
@@ -148,44 +409,72 @@
         </q-card>
       </div>
 
-      <!-- Recommendations -->
+      <!-- Recommendations Engine -->
       <div class="col-12 col-md-6">
         <q-card flat bordered>
           <q-card-section class="bg-purple-1">
-            <div class="text-h6">
-              <q-icon name="lightbulb" class="q-mr-sm" />
-              Quality Recommendations
+            <div class="row items-center justify-between">
+              <div class="text-h6">
+                <q-icon name="lightbulb" class="q-mr-sm" />
+                Smart Recommendations
+              </div>
+              <q-btn
+                icon="refresh"
+                flat
+                round
+                size="sm"
+                @click="refreshRecommendations"
+                :loading="isGeneratingRecommendations"
+              />
             </div>
           </q-card-section>
           <q-card-section>
-            <q-list dense>
-              <q-item v-for="recommendation in qualityRecommendations" :key="recommendation.id">
+            <div v-if="smartRecommendations.length === 0" class="text-center q-pa-md text-grey-6">
+              <q-icon name="psychology" size="2rem" class="q-mb-sm" />
+              <div>No recommendations available</div>
+              <div class="text-caption">AI-powered suggestions will appear here</div>
+            </div>
+
+            <q-list v-else>
+              <q-item
+                v-for="recommendation in smartRecommendations"
+                :key="recommendation.id"
+                clickable
+                @click="viewRecommendationDetails(recommendation)"
+              >
                 <q-item-section avatar>
-                  <q-icon
-                    :name="getRecommendationIcon(recommendation.type)"
+                  <q-avatar
                     :color="getRecommendationColor(recommendation.priority)"
+                    text-color="white"
+                    :icon="getRecommendationIcon(recommendation.type)"
                   />
                 </q-item-section>
+
                 <q-item-section>
                   <q-item-label>{{ recommendation.title }}</q-item-label>
                   <q-item-label caption>{{ recommendation.description }}</q-item-label>
+                  <q-item-label caption class="q-mt-xs">
+                    <q-chip size="xs" :color="getImpactColor(recommendation.impact)" text-color="white">
+                      {{ recommendation.impact }} Impact
+                    </q-chip>
+                    <q-chip size="xs" color="grey-6" text-color="white" class="q-ml-xs">
+                      {{ recommendation.effort }} Effort
+                    </q-chip>
+                  </q-item-label>
                 </q-item-section>
+
                 <q-item-section side>
                   <div class="column q-gutter-xs">
-                    <q-chip
-                      :color="getRecommendationColor(recommendation.priority)"
-                      text-color="white"
-                      size="sm"
-                    >
-                      {{ recommendation.priority }}
-                    </q-chip>
                     <q-btn
                       label="Apply"
                       size="sm"
-                      flat
-                      color="primary"
-                      @click="applyRecommendation(recommendation)"
+                      :color="getRecommendationColor(recommendation.priority)"
+                      @click.stop="applyRecommendation(recommendation)"
+                      :loading="applyingRecommendations.includes(recommendation.id)"
                     />
+                    <div class="text-caption text-center">
+                      {{ recommendation.confidence }}% confidence
+                    </div>
                   </div>
                 </q-item-section>
               </q-item>
@@ -196,80 +485,127 @@
     </div>
 
     <!-- Detailed Quality Metrics -->
-    <div class="row q-gutter-md q-mb-lg">
+    <div class="row q-gutter-md">
       <div class="col-12">
         <q-card flat bordered>
           <q-card-section class="bg-teal-1">
-            <div class="text-h6">
-              <q-icon name="analytics" class="q-mr-sm" />
-              Detailed Quality Metrics
+            <div class="row items-center justify-between">
+              <div class="text-h6">
+                <q-icon name="analytics" class="q-mr-sm" />
+                Detailed Quality Metrics by Measurement
+              </div>
+              <q-btn-toggle
+                v-model="metricsViewMode"
+                :options="metricsViewOptions"
+                size="sm"
+                color="primary"
+                outline
+              />
             </div>
           </q-card-section>
-          <q-card-section>
+
+          <q-card-section class="q-pa-none">
             <q-table
               :rows="detailedMetrics"
               :columns="metricsColumns"
               row-key="measurement"
               flat
-              :pagination="{ rowsPerPage: 10 }"
+              :pagination="metricsPagination"
+              :visible-columns="visibleMetricsColumns"
             >
               <template #body-cell-measurement="props">
                 <q-td :props="props">
-                  <q-chip color="primary" text-color="white" size="sm">
-                    {{ props.value }}
-                  </q-chip>
+                  <div class="row items-center q-gutter-sm">
+                    <q-avatar size="sm" color="primary" text-color="white">
+                      <q-icon name="table_chart" />
+                    </q-avatar>
+                    <div>
+                      <div class="text-body2">{{ props.value }}</div>
+                      <div class="text-caption text-grey-6">
+                        {{ getMeasurementInfo(props.row).fieldCount }} fields
+                      </div>
+                    </div>
+                  </div>
                 </q-td>
               </template>
+
               <template #body-cell-completeness="props">
                 <q-td :props="props">
                   <div class="row items-center q-gutter-sm">
-                    <q-linear-progress
-                      :value="props.value / 100"
-                      :color="getScoreColor(props.value)"
-                      size="20px"
-                      style="width: 80px;"
+                    <q-circular-progress
+                      :value="props.value"
+                      size="30px"
+                      :thickness="0.15"
+                      :color="getDimensionColor(props.value)"
+                      track-color="grey-3"
+                      show-value
+                      font-size="10px"
                     />
-                    <span class="text-caption">{{ props.value }}%</span>
+                    <div class="text-caption">{{ props.value }}%</div>
                   </div>
                 </q-td>
               </template>
+
               <template #body-cell-accuracy="props">
                 <q-td :props="props">
                   <div class="row items-center q-gutter-sm">
-                    <q-linear-progress
-                      :value="props.value / 100"
-                      :color="getScoreColor(props.value)"
-                      size="20px"
-                      style="width: 80px;"
+                    <q-circular-progress
+                      :value="props.value"
+                      size="30px"
+                      :thickness="0.15"
+                      :color="getDimensionColor(props.value)"
+                      track-color="grey-3"
+                      show-value
+                      font-size="10px"
                     />
-                    <span class="text-caption">{{ props.value }}%</span>
+                    <div class="text-caption">{{ props.value }}%</div>
                   </div>
                 </q-td>
               </template>
+
               <template #body-cell-consistency="props">
                 <q-td :props="props">
                   <div class="row items-center q-gutter-sm">
-                    <q-linear-progress
-                      :value="props.value / 100"
-                      :color="getScoreColor(props.value)"
-                      size="20px"
-                      style="width: 80px;"
+                    <q-circular-progress
+                      :value="props.value"
+                      size="30px"
+                      :thickness="0.15"
+                      :color="getDimensionColor(props.value)"
+                      track-color="grey-3"
+                      show-value
+                      font-size="10px"
                     />
-                    <span class="text-caption">{{ props.value }}%</span>
+                    <div class="text-caption">{{ props.value }}%</div>
                   </div>
                 </q-td>
               </template>
+
               <template #body-cell-validity="props">
                 <q-td :props="props">
                   <div class="row items-center q-gutter-sm">
-                    <q-linear-progress
-                      :value="props.value / 100"
-                      :color="getScoreColor(props.value)"
-                      size="20px"
-                      style="width: 80px;"
+                    <q-circular-progress
+                      :value="props.value"
+                      size="30px"
+                      :thickness="0.15"
+                      :color="getDimensionColor(props.value)"
+                      track-color="grey-3"
+                      show-value
+                      font-size="10px"
                     />
-                    <span class="text-caption">{{ props.value }}%</span>
+                    <div class="text-caption">{{ props.value }}%</div>
                   </div>
+                </q-td>
+              </template>
+
+              <template #body-cell-overallScore="props">
+                <q-td :props="props">
+                  <q-chip
+                    :color="getDimensionColor(props.value)"
+                    text-color="white"
+                    size="sm"
+                  >
+                    {{ props.value }}% - {{ getScoreGrade(props.value) }}
+                  </q-chip>
                 </q-td>
               </template>
             </q-table>
@@ -286,94 +622,156 @@
           <q-space />
           <q-btn icon="close" flat round dense @click="showIssueDialog = false" />
         </q-card-section>
-        <q-card-section class="scroll">
-          <div v-if="selectedIssue">
-            <div class="row q-gutter-md">
-              <!-- Issue Information -->
-              <div class="col-12 col-md-6">
-                <q-card flat bordered>
-                  <q-card-section>
-                    <div class="text-subtitle1 q-mb-md">Issue Information</div>
-                    <q-list dense>
-                      <q-item>
-                        <q-item-section>
-                          <q-item-label caption>Title</q-item-label>
-                          <q-item-label>{{ selectedIssue.title }}</q-item-label>
-                        </q-item-section>
-                      </q-item>
-                      <q-item>
-                        <q-item-section>
-                          <q-item-label caption>Description</q-item-label>
-                          <q-item-label>{{ selectedIssue.description }}</q-item-label>
-                        </q-item-section>
-                      </q-item>
-                      <q-item>
-                        <q-item-section>
-                          <q-item-label caption>Severity</q-item-label>
-                          <q-item-label>
-                            <q-chip
-                              :color="getSeverityColor(selectedIssue.severity)"
-                              text-color="white"
-                              size="sm"
-                            >
-                              {{ selectedIssue.severity }}
-                            </q-chip>
-                          </q-item-label>
-                        </q-item-section>
-                      </q-item>
-                      <q-item>
-                        <q-item-section>
-                          <q-item-label caption>Category</q-item-label>
-                          <q-item-label>{{ selectedIssue.category }}</q-item-label>
-                        </q-item-section>
-                      </q-item>
-                      <q-item>
-                        <q-item-section>
-                          <q-item-label caption>Measurement</q-item-label>
-                          <q-item-label>{{ selectedIssue.measurement }}</q-item-label>
-                        </q-item-section>
-                      </q-item>
-                    </q-list>
-                  </q-card-section>
-                </q-card>
-              </div>
 
-              <!-- Resolution Steps -->
-              <div class="col-12 col-md-6">
-                <q-card flat bordered>
-                  <q-card-section>
-                    <div class="text-subtitle1 q-mb-md">Resolution Steps</div>
-                    <q-list dense>
-                      <q-item v-for="(step, index) in selectedIssue.resolutionSteps" :key="index">
-                        <q-item-section avatar>
-                          <q-avatar :color="index === 0 ? 'primary' : 'grey'" text-color="white" size="sm">
-                            {{ index + 1 }}
-                          </q-avatar>
-                        </q-item-section>
-                        <q-item-section>
-                          <q-item-label>{{ step }}</q-item-label>
-                        </q-item-section>
-                      </q-item>
-                    </q-list>
-                  </q-card-section>
-                </q-card>
-              </div>
+        <q-card-section class="scroll" v-if="selectedIssue">
+          <div class="row q-gutter-md">
+            <!-- Issue Overview -->
+            <div class="col-12 col-md-6">
+              <q-card flat bordered>
+                <q-card-section class="bg-blue-1">
+                  <div class="text-subtitle1">Issue Overview</div>
+                </q-card-section>
+                <q-card-section>
+                  <q-list dense>
+                    <q-item>
+                      <q-item-section>
+                        <q-item-label caption>Title</q-item-label>
+                        <q-item-label>{{ selectedIssue.title }}</q-item-label>
+                      </q-item-section>
+                    </q-item>
+                    <q-item>
+                      <q-item-section>
+                        <q-item-label caption>Description</q-item-label>
+                        <q-item-label>{{ selectedIssue.description }}</q-item-label>
+                      </q-item-section>
+                    </q-item>
+                    <q-item>
+                      <q-item-section>
+                        <q-item-label caption>Severity</q-item-label>
+                        <q-item-label>
+                          <q-chip
+                            :color="getSeverityColor(selectedIssue.severity)"
+                            text-color="white"
+                            :icon="getSeverityIcon(selectedIssue.severity)"
+                          >
+                            {{ selectedIssue.severity }}
+                          </q-chip>
+                        </q-item-label>
+                      </q-item-section>
+                    </q-item>
+                    <q-item>
+                      <q-item-section>
+                        <q-item-label caption>Category</q-item-label>
+                        <q-item-label>{{ selectedIssue.category }}</q-item-label>
+                      </q-item-section>
+                    </q-item>
+                    <q-item>
+                      <q-item-section>
+                        <q-item-label caption>Affected Measurement</q-item-label>
+                        <q-item-label>{{ selectedIssue.measurement }}</q-item-label>
+                      </q-item-section>
+                    </q-item>
+                    <q-item>
+                      <q-item-section>
+                        <q-item-label caption>Impact</q-item-label>
+                        <q-item-label>{{ selectedIssue.impact }}</q-item-label>
+                      </q-item-section>
+                    </q-item>
+                  </q-list>
+                </q-card-section>
+              </q-card>
+            </div>
+
+            <!-- Resolution Guide -->
+            <div class="col-12 col-md-6">
+              <q-card flat bordered>
+                <q-card-section class="bg-green-1">
+                  <div class="text-subtitle1">Resolution Guide</div>
+                </q-card-section>
+                <q-card-section>
+                  <q-stepper
+                    v-model="resolutionStep"
+                    vertical
+                    color="primary"
+                    animated
+                  >
+                    <q-step
+                      v-for="(step, index) in selectedIssue.resolutionSteps"
+                      :key="index"
+                      :name="index + 1"
+                      :title="`Step ${index + 1}`"
+                      :icon="index === 0 ? 'play_arrow' : index + 1 <= resolutionStep ? 'check' : 'schedule'"
+                      :done="index + 1 < resolutionStep"
+                    >
+                      <div>{{ step }}</div>
+
+                      <q-stepper-navigation>
+                        <q-btn
+                          v-if="index < selectedIssue.resolutionSteps.length - 1"
+                          @click="resolutionStep = index + 2"
+                          color="primary"
+                          label="Next"
+                        />
+                        <q-btn
+                          v-if="index > 0"
+                          flat
+                          color="primary"
+                          @click="resolutionStep = index"
+                          label="Back"
+                          class="q-ml-sm"
+                        />
+                      </q-stepper-navigation>
+                    </q-step>
+                  </q-stepper>
+                </q-card-section>
+              </q-card>
             </div>
           </div>
         </q-card-section>
+
         <q-card-actions align="right">
           <q-btn label="Close" flat @click="showIssueDialog = false" />
           <q-btn
-            label="Fix Issue"
+            v-if="selectedIssue?.canAutoFix"
+            label="Auto Fix"
             color="primary"
-            @click="fixSelectedIssue"
+            @click="autoFixSelectedIssue"
+            :loading="fixingIssues.includes(selectedIssue?.id)"
+          />
+          <q-btn
+            label="Manual Fix"
+            color="secondary"
+            @click="manualFixSelectedIssue"
             :loading="fixingIssues.includes(selectedIssue?.id)"
           />
         </q-card-actions>
       </q-card>
     </q-dialog>
+
+    <!-- Dimension Details Dialog -->
+    <q-dialog v-model="showDimensionDialog" maximized>
+      <q-card>
+        <q-card-section class="row items-center q-pb-none">
+          <div class="text-h6">{{ selectedDimension?.name }} Quality Details</div>
+          <q-space />
+          <q-btn icon="close" flat round dense @click="showDimensionDialog = false" />
+        </q-card-section>
+
+        <q-card-section class="scroll" v-if="selectedDimension">
+          <!-- Dimension details content would go here -->
+          <div class="text-center q-pa-xl">
+            <q-icon :name="selectedDimension.icon" size="4rem" class="text-grey-4 q-mb-md" />
+            <div class="text-h5 text-grey-6">{{ selectedDimension.name }} Analysis</div>
+            <div class="text-body1 text-grey-5">
+              Detailed {{ selectedDimension.name.toLowerCase() }} quality analysis and recommendations
+            </div>
+          </div>
+        </q-card-section>
+      </q-card>
+    </q-dialog>
   </div>
 </template>
+
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
