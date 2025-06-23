@@ -275,16 +275,17 @@ const discoverSchema = async () => {
 
     const schemaPromises = measurements.slice(0, 5).map(async (measurement) => {
       try {
+        console.log(measurement)
         const [tagsResponse, fieldsResponse] = await Promise.all([
           axios.post('http://localhost:8000/datasources/discover/tags', {
-        source_type: props.source.source_type,
-        connection_config :props.source,
+            source_type: props.source.source_type,
+            connection_config :props.source,
             measurement
           }),
           axios.post('http://localhost:8000/datasources/discover/fields', {
-        source_type: props.source.source_type,
-        connection_config :props.source,
-            measurement
+          source_type: props.source.source_type,
+          connection_config :props.source,
+          measurement
           })
         ])
 
@@ -389,7 +390,8 @@ const discoverMeasurementFields = async () => {
 
   try {
     const response = await axios.post('http://localhost:8000/datasources/discover/fields', {
-      source_id: props.source.source_id,
+        source_type: props.source.source_type,
+        connection_config :props.source,
       measurement: selectedMeasurement.value
     })
 

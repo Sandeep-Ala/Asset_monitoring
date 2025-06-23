@@ -200,7 +200,7 @@ class DiscoveryRoutes:
             config_dict = request.connection_config
             if isinstance(config_dict, str):
                 config_dict = json.loads(config_dict)
-                
+            print(config_dict)
             discovery_service = get_discovery_service(request.source_type, config_dict)
             tags = discovery_service.discover_tags(request.measurement)
             

@@ -484,7 +484,8 @@ const discoverFields = async () => {
   discoveringFields.value = true
   try {
     const response = await axios.post('http://localhost:8000/datasources/discover/fields', {
-      source_id: props.source.source_id,
+        source_type: props.source.source_type,
+        connection_config :props.source,
       measurement: mappingForm.value.measurement_name
     })
 
