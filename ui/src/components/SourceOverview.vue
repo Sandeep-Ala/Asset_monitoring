@@ -1,403 +1,142 @@
-<!-- ui/src/components/SourceOverview.vue -->
+<!-- ui/src/components/SchemaOverview.vue -->
+<!-- Schema summary dashboard component -->
+
 <template>
-  <div class="source-overview q-pa-lg">
-    <!-- Header Stats -->
+  <div class="schema-overview">
+    <!-- Quick Stats Cards -->
     <div class="row q-gutter-md q-mb-lg">
-      <div class="col-12 col-md-3">
-        <q-card flat bordered>
-          <q-card-section class="text-center">
-            <q-icon name="link" size="2rem" color="primary" class="q-mb-sm" />
-            <div class="text-h6">{{ mappings.length }}</div>
-            <div class="text-caption text-grey-6">Active Mappings</div>
-          </q-card-section>
+      <div class="col-6 col-md-3">
+        <q-card flat class="bg-blue-1 text-center q-pa-md">
+          <q-icon name="table_chart" size="2rem" color="blue" class="q-mb-sm" />
+          <div class="text-h4">{{ measurementsCount }}</div>
+          <div class="text-body2">Measurements</div>
         </q-card>
       </div>
-
-      <div class="col-12 col-md-3">
-        <q-card flat bordered>
-          <q-card-section class="text-center">
-            <q-icon name="table_chart" size="2rem" color="blue" class="q-mb-sm" />
-            <div class="text-h6">{{ discoveredMeasurements.length }}</div>
-            <div class="text-caption text-grey-6">Measurements</div>
-          </q-card-section>
+      <div class="col-6 col-md-3">
+        <q-card flat class="bg-green-1 text-center q-pa-md">
+          <q-icon name="label" size="2rem" color="green" class="q-mb-sm" />
+          <div class="text-h4">{{ totalTags }}</div>
+          <div class="text-body2">Tags</div>
         </q-card>
       </div>
-
-      <div class="col-12 col-md-3">
-        <q-card flat bordered>
-          <q-card-section class="text-center">
-            <q-icon
-              :name="healthStatus?.healthy ? 'check_circle' : 'error'"
-              size="2rem"
-              :color="healthStatus?.healthy ? 'positive' : 'negative'"
-              class="q-mb-sm"
-            />
-            <div class="text-h6">{{ healthStatus?.healthy ? 'Healthy' : 'Issues' }}</div>
-            <div class="text-caption text-grey-6">Connection Status</div>
-          </q-card-section>
+      <div class="col-6 col-md-3">
+        <q-card flat class="bg-orange-1 text-center q-pa-md">
+          <q-icon name="data_object" size="2rem" color="orange" class="q-mb-sm" />
+          <div class="text-h4">{{ totalFields }}</div>
+          <div class="text-body2">Fields</div>
         </q-card>
       </div>
-
-      <div class="col-12 col-md-3">
-        <q-card flat bordered>
-          <q-card-section class="text-center">
-            <q-icon name="access_time" size="2rem" color="orange" class="q-mb-sm" />
-            <div class="text-h6">{{ formatDate(source.updated_at) }}</div>
-            <div class="text-caption text-grey-6">Last Updated</div>
-          </q-card-section>
+      <div class="col-6 col-md-3">
+        <q-card flat class="bg-purple-1 text-center q-pa-md">
+          <q-icon name="speed" size="2rem" color="purple" class="q-mb-sm" />
+          <div class="text-h4">{{ schemaScore }}%</div>
+          <div class="text-body2">Schema Quality</div>
         </q-card>
       </div>
     </div>
 
-    <!-- Source Information -->
-    <div class="row q-gutter-lg">
-      <!-- Basic Information -->
-      <div class="col-12 col-md-6">
+    <!-- Schema Health Status -->
+    <div class="row q-gutter-md q-mb-lg">
+      <div class="col-12">
         <q-card flat bordered>
-          <q-card-section>
-            <div class="text-h6 q-mb-md">Source Information</div>
-
-            <q-list>
-              <q-item>
-                <q-item-section avatar>
-                  <q-icon name="storage" color="primary" />
-                </q-item-section>
-                <q-item-section>
-                  <q-item-label caption>Source Name</q-item-label>
-                  <q-item-label class="text-h6">{{ source.source_name }}</q-item-label>
-                </q-item-section>
-              </q-item>
-
-              <q-item>
-                <q-item-section avatar>
-                  <q-icon name="category" color="blue" />
-                </q-item-section>
-                <q-item-section>
-                  <q-item-label caption>Source Type</q-item-label>
-                  <q-item-label>{{ source.source_type.toUpperCase() }}</q-item-label>
-                </q-item-section>
-              </q-item>
-
-              <q-item>
-                <q-item-section avatar>
-                  <q-icon
-                    :name="source.is_active ? 'check_circle' : 'pause_circle'"
-                    :color="source.is_active ? 'positive' : 'warning'"
-                  />
-                </q-item-section>
-                <q-item-section>
-                  <q-item-label caption>Status</q-item-label>
-                  <q-item-label>
-                    <q-chip
-                      :color="source.is_active ? 'positive' : 'warning'"
-                      text-color="white"
-                      size="sm"
-                    >
-                      {{ source.is_active ? 'Active' : 'Inactive' }}
-                    </q-chip>
-                  </q-item-label>
-                </q-item-section>
-              </q-item>
-
-              <q-item>
-                <q-item-section avatar>
-                  <q-icon name="schedule" color="grey" />
-                </q-item-section>
-                <q-item-section>
-                  <q-item-label caption>Created</q-item-label>
-                  <q-item-label>{{ formatDateTime(source.created_at) }}</q-item-label>
-                </q-item-section>
-              </q-item>
-
-              <q-item>
-                <q-item-section avatar>
-                  <q-icon name="update" color="grey" />
-                </q-item-section>
-                <q-item-section>
-                  <q-item-label caption>Last Modified</q-item-label>
-                  <q-item-label>{{ formatDateTime(source.updated_at) }}</q-item-label>
-                </q-item-section>
-              </q-item>
-            </q-list>
-          </q-card-section>
-        </q-card>
-      </div>
-
-      <!-- Connection Summary -->
-      <div class="col-12 col-md-6">
-        <q-card flat bordered>
-          <q-card-section>
-            <div class="row items-center justify-between q-mb-md">
-              <div class="text-h6">Connection Summary</div>
-              <q-btn
-                icon="refresh"
-                flat
-                round
-                size="sm"
-                @click="refreshHealth"
-                :loading="refreshingHealth"
-              />
+          <q-card-section class="bg-teal-1">
+            <div class="text-h6">
+              <q-icon name="health_and_safety" class="q-mr-sm" />
+              Schema Health Status
             </div>
-
-            <div v-if="connectionConfig">
-              <!-- InfluxDB Config -->
-              <div v-if="source.source_type === 'influxdb'">
-                <q-list>
-                  <q-item>
-                    <q-item-section avatar>
-                      <q-icon name="language" color="deep-purple" />
-                    </q-item-section>
-                    <q-item-section>
-                      <q-item-label caption>Server URL</q-item-label>
-                      <q-item-label>{{ connectionConfig.url }}</q-item-label>
-                    </q-item-section>
-                  </q-item>
-
-                  <q-item>
-                    <q-item-section avatar>
-                      <q-icon name="business" color="deep-purple" />
-                    </q-item-section>
-                    <q-item-section>
-                      <q-item-label caption>Organization</q-item-label>
-                      <q-item-label>{{ connectionConfig.org }}</q-item-label>
-                    </q-item-section>
-                  </q-item>
-
-                  <q-item>
-                    <q-item-section avatar>
-                      <q-icon name="folder" color="deep-purple" />
-                    </q-item-section>
-                    <q-item-section>
-                      <q-item-label caption>Bucket</q-item-label>
-                      <q-item-label>{{ connectionConfig.bucket }}</q-item-label>
-                    </q-item-section>
-                  </q-item>
-
-                  <q-item>
-                    <q-item-section avatar>
-                      <q-icon name="vpn_key" color="deep-purple" />
-                    </q-item-section>
-                    <q-item-section>
-                      <q-item-label caption>Token</q-item-label>
-                      <q-item-label>{{ maskToken(connectionConfig.token) }}</q-item-label>
-                    </q-item-section>
-                  </q-item>
-                </q-list>
-              </div>
-
-              <!-- Parquet Config -->
-              <div v-else-if="source.source_type === 'parquet'">
-                <q-list>
-                  <q-item>
-                    <q-item-section avatar>
-                      <q-icon name="folder_open" color="blue-grey" />
-                    </q-item-section>
-                    <q-item-section>
-                      <q-item-label caption>Base Path</q-item-label>
-                      <q-item-label>{{ connectionConfig.base_path }}</q-item-label>
-                    </q-item-section>
-                  </q-item>
-
-                  <q-item>
-                    <q-item-section avatar>
-                      <q-icon name="pattern" color="blue-grey" />
-                    </q-item-section>
-                    <q-item-section>
-                      <q-item-label caption>File Pattern</q-item-label>
-                      <q-item-label>{{ connectionConfig.path_pattern }}</q-item-label>
-                    </q-item-section>
-                  </q-item>
-
-                  <q-item v-if="connectionConfig.date_column">
-                    <q-item-section avatar>
-                      <q-icon name="access_time" color="blue-grey" />
-                    </q-item-section>
-                    <q-item-section>
-                      <q-item-label caption>Date Column</q-item-label>
-                      <q-item-label>{{ connectionConfig.date_column }}</q-item-label>
-                    </q-item-section>
-                  </q-item>
-                </q-list>
-              </div>
-
-              <!-- Health Status -->
-              <div class="q-mt-md">
-                <q-card flat bordered :class="healthStatus?.healthy ? 'bg-green-1' : 'bg-red-1'">
-                  <q-card-section>
-                    <div class="row items-center">
-                      <q-icon
-                        :name="healthStatus?.healthy ? 'check_circle' : 'error'"
-                        :color="healthStatus?.healthy ? 'positive' : 'negative'"
-                        size="md"
-                        class="q-mr-md"
+          </q-card-section>
+          <q-card-section>
+            <div class="row q-gutter-md">
+              <!-- Health Indicators -->
+              <div class="col-12 col-md-8">
+                <div class="row q-gutter-sm">
+                  <div class="col-6 col-md-3">
+                    <div class="text-center">
+                      <q-circular-progress
+                        :value="healthMetrics.completeness"
+                        size="60px"
+                        :thickness="0.15"
+                        color="green"
+                        track-color="grey-3"
+                        show-value
+                        font-size="12px"
                       />
-                      <div class="col">
-                        <div class="text-subtitle2">
-                          {{ healthStatus?.healthy ? 'Connection Healthy' : 'Connection Issues' }}
-                        </div>
-                        <div class="text-caption text-grey-7">
-                          Last checked: {{ formatDateTime(healthStatus?.lastChecked) || 'Never' }}
-                        </div>
-                      </div>
+                      <div class="text-caption q-mt-xs">Completeness</div>
                     </div>
-                  </q-card-section>
-                </q-card>
-              </div>
-            </div>
-          </q-card-section>
-        </q-card>
-      </div>
-    </div>
-
-    <!-- Recent Activity -->
-    <div class="row q-gutter-lg q-mt-lg">
-      <!-- Mappings Summary -->
-      <div class="col-12 col-md-6">
-        <q-card flat bordered>
-          <q-card-section>
-            <div class="row items-center justify-between q-mb-md">
-              <div class="text-h6">Equipment Mappings</div>
-              <q-btn
-                label="Create New"
-                icon="add"
-                color="primary"
-                size="sm"
-                @click="$emit('create-mapping')"
-              />
-            </div>
-
-            <div v-if="mappings.length === 0" class="text-center q-pa-lg text-grey-6">
-              <q-icon name="link_off" size="3rem" class="q-mb-md" />
-              <div class="text-h6">No Mappings</div>
-              <div class="text-body2">Create mappings to connect this data source to equipment</div>
-            </div>
-
-            <q-list v-else separator>
-              <q-item v-for="mapping in recentMappings" :key="mapping.mapping_id">
-                <q-item-section avatar>
-                  <q-avatar color="primary" text-color="white" size="sm">
-                    <q-icon name="link" />
-                  </q-avatar>
-                </q-item-section>
-
-                <q-item-section>
-                  <q-item-label>{{ getEquipmentName(mapping.equipment_id) }}</q-item-label>
-                  <q-item-label caption>
-                    {{ mapping.measurement_name }} •
-                    {{ Object.keys(mapping.tag_mappings || {}).length }} tags •
-                    {{ Object.keys(mapping.field_mappings || {}).length }} fields
-                  </q-item-label>
-                </q-item-section>
-
-                <q-item-section side>
-                  <div class="text-caption text-grey-6">
-                    {{ formatDate(mapping.created_at) }}
                   </div>
-                </q-item-section>
-              </q-item>
+                  <div class="col-6 col-md-3">
+                    <div class="text-center">
+                      <q-circular-progress
+                        :value="healthMetrics.consistency"
+                        size="60px"
+                        :thickness="0.15"
+                        color="blue"
+                        track-color="grey-3"
+                        show-value
+                        font-size="12px"
+                      />
+                      <div class="text-caption q-mt-xs">Consistency</div>
+                    </div>
+                  </div>
+                  <div class="col-6 col-md-3">
+                    <div class="text-center">
+                      <q-circular-progress
+                        :value="healthMetrics.validity"
+                        size="60px"
+                        :thickness="0.15"
+                        color="orange"
+                        track-color="grey-3"
+                        show-value
+                        font-size="12px"
+                      />
+                      <div class="text-caption q-mt-xs">Validity</div>
+                    </div>
+                  </div>
+                  <div class="col-6 col-md-3">
+                    <div class="text-center">
+                      <q-circular-progress
+                        :value="healthMetrics.freshness"
+                        size="60px"
+                        :thickness="0.15"
+                        color="red"
+                        track-color="grey-3"
+                        show-value
+                        font-size="12px"
+                      />
+                      <div class="text-caption q-mt-xs">Freshness</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
 
-              <q-item v-if="mappings.length > 3">
-                <q-item-section class="text-center">
+              <!-- Quick Actions -->
+              <div class="col-12 col-md-4">
+                <div class="text-subtitle2 q-mb-sm">Quick Actions</div>
+                <div class="column q-gutter-sm">
                   <q-btn
-                    :label="`View all ${mappings.length} mappings`"
-                    flat
+                    label="Refresh Schema"
+                    icon="refresh"
                     color="primary"
-                    @click="$emit('view-all-mappings')"
-                  />
-                </q-item-section>
-              </q-item>
-            </q-list>
-          </q-card-section>
-        </q-card>
-      </div>
-
-      <!-- Schema Discovery -->
-      <div class="col-12 col-md-6">
-        <q-card flat bordered>
-          <q-card-section>
-            <div class="row items-center justify-between q-mb-md">
-              <div class="text-h6">Schema Discovery</div>
-              <q-btn
-                label="Explore"
-                icon="search"
-                color="secondary"
-                size="sm"
-                @click="$emit('explore-schema')"
-              />
-            </div>
-
-            <div v-if="discoveredMeasurements.length === 0" class="text-center q-pa-lg text-grey-6">
-              <q-icon name="search" size="3rem" class="q-mb-md" />
-              <div class="text-h6">No Schema Data</div>
-              <div class="text-body2">Discover measurements and schema structure</div>
-            </div>
-
-            <div v-else>
-              <q-list>
-                <q-item>
-                  <q-item-section avatar>
-                    <q-icon name="table_chart" color="blue" />
-                  </q-item-section>
-                  <q-item-section>
-                    <q-item-label>Measurements Discovered</q-item-label>
-                    <q-item-label caption>{{ discoveredMeasurements.length }} tables/measurements found</q-item-label>
-                  </q-item-section>
-                  <q-item-section side>
-                    <q-chip color="blue" text-color="white" size="sm">
-                      {{ discoveredMeasurements.length }}
-                    </q-chip>
-                  </q-item-section>
-                </q-item>
-
-                <q-item>
-                  <q-item-section avatar>
-                    <q-icon name="label" color="green" />
-                  </q-item-section>
-                  <q-item-section>
-                    <q-item-label>Tag Columns</q-item-label>
-                    <q-item-label caption>Filterable tag columns across measurements</q-item-label>
-                  </q-item-section>
-                  <q-item-section side>
-                    <q-chip color="green" text-color="white" size="sm">
-                      {{ totalTagsCount }}
-                    </q-chip>
-                  </q-item-section>
-                </q-item>
-
-                <q-item>
-                  <q-item-section avatar>
-                    <q-icon name="insights" color="orange" />
-                  </q-item-section>
-                  <q-item-section>
-                    <q-item-label>Field Columns</q-item-label>
-                    <q-item-label caption>Measurement value columns across measurements</q-item-label>
-                  </q-item-section>
-                  <q-item-section side>
-                    <q-chip color="orange" text-color="white" size="sm">
-                      {{ totalFieldsCount }}
-                    </q-chip>
-                  </q-item-section>
-                </q-item>
-              </q-list>
-
-              <!-- Recent Measurements -->
-              <div class="q-mt-md">
-                <div class="text-subtitle2 q-mb-sm">Recent Measurements</div>
-                <div class="row q-gutter-xs">
-                  <q-chip
-                    v-for="measurement in discoveredMeasurements.slice(0, 4)"
-                    :key="measurement"
-                    :label="measurement"
-                    color="blue-grey"
-                    text-color="white"
                     size="sm"
+                    @click="refreshSchema"
+                    :loading="refreshing"
                   />
-                  <q-chip
-                    v-if="discoveredMeasurements.length > 4"
-                    :label="`+${discoveredMeasurements.length - 4} more`"
-                    color="grey"
-                    text-color="white"
+                  <q-btn
+                    label="Export Schema"
+                    icon="download"
+                    color="secondary"
+                    outline
                     size="sm"
+                    @click="exportSchema"
+                  />
+                  <q-btn
+                    label="Run Quality Check"
+                    icon="verified"
+                    color="warning"
+                    outline
+                    size="sm"
+                    @click="runQualityCheck"
+                    :loading="checkingQuality"
                   />
                 </div>
               </div>
@@ -407,54 +146,197 @@
       </div>
     </div>
 
-    <!-- Quick Actions -->
-    <div class="row q-mt-lg">
+    <!-- Measurements Overview -->
+    <div class="row q-gutter-md q-mb-lg">
       <div class="col-12">
         <q-card flat bordered>
+          <q-card-section class="bg-blue-1">
+            <div class="text-h6">
+              <q-icon name="table_chart" class="q-mr-sm" />
+              Measurements Overview
+            </div>
+          </q-card-section>
           <q-card-section>
-            <div class="text-h6 q-mb-md">Quick Actions</div>
-
-            <div class="row q-gutter-md">
+            <div v-if="!schema || !schema.measurements || schema.measurements.length === 0"
+                 class="text-center q-pa-lg">
+              <q-icon name="table_chart" size="3rem" class="text-grey-4 q-mb-md" />
+              <div class="text-h6 text-grey-6">No Measurements Found</div>
+              <div class="text-body2 text-grey-5 q-mb-lg">
+                Run schema discovery to find available measurements
+              </div>
               <q-btn
-                label="Test Connection"
-                icon="wifi_find"
-                color="secondary"
-                outline
-                @click="$emit('test-connection')"
-              />
-
-              <q-btn
-                label="Discover Schema"
+                label="Discover Measurements"
                 icon="search"
                 color="primary"
-                outline
-                @click="$emit('discover-schema')"
-              />
-
-              <q-btn
-                label="Create Mapping"
-                icon="link"
-                color="positive"
-                outline
-                @click="$emit('create-mapping')"
-              />
-
-              <q-btn
-                label="Export Config"
-                icon="file_download"
-                color="blue-grey"
-                outline
-                @click="$emit('export-config')"
-              />
-
-              <q-btn
-                label="Clone Source"
-                icon="content_copy"
-                color="orange"
-                outline
-                @click="$emit('clone-source')"
+                @click="discoverMeasurements"
+                :loading="discovering"
               />
             </div>
+            <div v-else>
+              <q-table
+                :rows="measurementRows"
+                :columns="measurementColumns"
+                row-key="name"
+                flat
+                :pagination="{ rowsPerPage: 10 }"
+              >
+                <template #body-cell-name="props">
+                  <q-td :props="props">
+                    <q-chip color="primary" text-color="white" size="sm">
+                      {{ props.value }}
+                    </q-chip>
+                  </q-td>
+                </template>
+                <template #body-cell-tags="props">
+                  <q-td :props="props">
+                    <q-chip color="green" outline size="sm">
+                      {{ props.value }} tags
+                    </q-chip>
+                  </q-td>
+                </template>
+                <template #body-cell-fields="props">
+                  <q-td :props="props">
+                    <q-chip color="orange" outline size="sm">
+                      {{ props.value }} fields
+                    </q-chip>
+                  </q-td>
+                </template>
+                <template #body-cell-actions="props">
+                  <q-td :props="props">
+                    <div class="q-gutter-sm">
+                      <q-btn
+                        icon="visibility"
+                        flat
+                        round
+                        size="sm"
+                        color="primary"
+                        @click="discoverMeasurement(props.row.name)"
+                      >
+                        <q-tooltip>View Details</q-tooltip>
+                      </q-btn>
+                      <q-btn
+                        icon="link"
+                        flat
+                        round
+                        size="sm"
+                        color="secondary"
+                        @click="createMapping(props.row.name)"
+                      >
+                        <q-tooltip>Create Mapping</q-tooltip>
+                      </q-btn>
+                    </div>
+                  </q-td>
+                </template>
+              </q-table>
+            </div>
+          </q-card-section>
+        </q-card>
+      </div>
+    </div>
+
+    <!-- Data Types Distribution -->
+    <div class="row q-gutter-md q-mb-lg">
+      <div class="col-12 col-md-6">
+        <q-card flat bordered>
+          <q-card-section class="bg-green-1">
+            <div class="text-h6">
+              <q-icon name="donut_small" class="q-mr-sm" />
+              Data Types Distribution
+            </div>
+          </q-card-section>
+          <q-card-section>
+            <div class="row q-gutter-sm">
+              <div v-for="type in dataTypeStats" :key="type.name" class="col-6 col-md-12">
+                <div class="row items-center q-gutter-sm">
+                  <q-icon :name="getTypeIcon(type.name)" :color="getTypeColor(type.name)" />
+                  <div class="text-body2">{{ type.name }}</div>
+                  <q-space />
+                  <q-chip :color="getTypeColor(type.name)" text-color="white" size="sm">
+                    {{ type.count }}
+                  </q-chip>
+                </div>
+                <q-linear-progress
+                  :value="type.percentage / 100"
+                  :color="getTypeColor(type.name)"
+                  size="8px"
+                  class="q-mt-xs"
+                />
+              </div>
+            </div>
+          </q-card-section>
+        </q-card>
+      </div>
+
+      <!-- Schema Issues -->
+      <div class="col-12 col-md-6">
+        <q-card flat bordered>
+          <q-card-section class="bg-red-1">
+            <div class="text-h6">
+              <q-icon name="warning" class="q-mr-sm" />
+              Schema Issues
+            </div>
+          </q-card-section>
+          <q-card-section>
+            <div v-if="schemaIssues.length === 0" class="text-center q-pa-md">
+              <q-icon name="check_circle" size="2rem" color="positive" class="q-mb-sm" />
+              <div class="text-body2 text-positive">No issues found</div>
+            </div>
+            <q-list v-else dense>
+              <q-item v-for="issue in schemaIssues" :key="issue.id">
+                <q-item-section avatar>
+                  <q-icon
+                    :name="getSeverityIcon(issue.severity)"
+                    :color="getSeverityColor(issue.severity)"
+                  />
+                </q-item-section>
+                <q-item-section>
+                  <q-item-label>{{ issue.title }}</q-item-label>
+                  <q-item-label caption>{{ issue.description }}</q-item-label>
+                </q-item-section>
+                <q-item-section side>
+                  <q-btn
+                    icon="fix"
+                    flat
+                    round
+                    size="sm"
+                    color="primary"
+                    @click="fixIssue(issue)"
+                  >
+                    <q-tooltip>Fix Issue</q-tooltip>
+                  </q-btn>
+                </q-item-section>
+              </q-item>
+            </q-list>
+          </q-card-section>
+        </q-card>
+      </div>
+    </div>
+
+    <!-- Recent Activity -->
+    <div class="row q-gutter-md">
+      <div class="col-12">
+        <q-card flat bordered>
+          <q-card-section class="bg-grey-1">
+            <div class="text-h6">
+              <q-icon name="history" class="q-mr-sm" />
+              Recent Schema Activity
+            </div>
+          </q-card-section>
+          <q-card-section>
+            <q-timeline color="primary">
+              <q-timeline-entry
+                v-for="activity in recentActivity"
+                :key="activity.id"
+                :title="activity.title"
+                :subtitle="activity.description"
+                :icon="activity.icon"
+                :color="activity.color"
+              >
+                <div class="text-caption text-grey-6">
+                  {{ formatRelativeTime(activity.timestamp) }}
+                </div>
+              </q-timeline-entry>
+            </q-timeline>
           </q-card-section>
         </q-card>
       </div>
@@ -464,155 +346,340 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useQuasar } from 'quasar'
 
 // Props
 const props = defineProps({
-  source: Object,
-  mappings: Array,
-  healthStatus: Object
+  schema: {
+    type: Object,
+    default: null
+  },
+  source: {
+    type: Object,
+    required: true
+  }
 })
 
 // Emits
-const emit = defineEmits([
-  'refresh',
-  'test-connection',
-  'discover-schema',
-  'create-mapping',
-  'view-all-mappings',
-  'explore-schema',
-  'export-config',
-  'clone-source'
-])
+const emit = defineEmits(['discover-measurement', 'create-mapping', 'refresh-schema'])
 
 // Reactive data
-const refreshingHealth = ref(false)
-const discoveredMeasurements = ref([])
-const equipmentNames = ref({})
+const $q = useQuasar()
+const refreshing = ref(false)
+const discovering = ref(false)
+const checkingQuality = ref(false)
+
+// Health metrics (would come from API in real app)
+const healthMetrics = ref({
+  completeness: 85,
+  consistency: 92,
+  validity: 78,
+  freshness: 95
+})
+
+// Schema issues (would come from API)
+const schemaIssues = ref([
+  {
+    id: 1,
+    severity: 'warning',
+    title: 'Missing timestamp field',
+    description: 'Some measurements lack proper timestamp fields'
+  },
+  {
+    id: 2,
+    severity: 'error',
+    title: 'Duplicate field names',
+    description: 'Field "voltage" appears in multiple measurements with different types'
+  },
+  {
+    id: 3,
+    severity: 'info',
+    title: 'Optimization opportunity',
+    description: 'Consider adding indexes for better query performance'
+  }
+])
+
+// Recent activity (would come from API)
+const recentActivity = ref([
+  {
+    id: 1,
+    title: 'Schema Discovery',
+    description: 'Discovered 5 new measurements',
+    icon: 'search',
+    color: 'primary',
+    timestamp: new Date(Date.now() - 1000 * 60 * 30) // 30 minutes ago
+  },
+  {
+    id: 2,
+    title: 'Quality Check',
+    description: 'Schema quality improved to 85%',
+    icon: 'verified',
+    color: 'positive',
+    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2) // 2 hours ago
+  },
+  {
+    id: 3,
+    title: 'Field Added',
+    description: 'New field "temperature" detected',
+    icon: 'add',
+    color: 'secondary',
+    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 6) // 6 hours ago
+  }
+])
 
 // Computed properties
-const connectionConfig = computed(() => {
-  try {
-    return JSON.parse(props.source.connection_config)
-  } catch {
-    return {}
+const measurementsCount = computed(() => {
+  return props.schema?.measurements?.length || 0
+})
+
+const totalTags = computed(() => {
+  if (!props.schema?.tags) return 0
+  return Object.values(props.schema.tags).reduce((sum, tags) => sum + tags.length, 0)
+})
+
+const totalFields = computed(() => {
+  if (!props.schema?.fields) return 0
+  return Object.values(props.schema.fields).reduce((sum, fields) => sum + fields.length, 0)
+})
+
+const schemaScore = computed(() => {
+  const metrics = healthMetrics.value
+  return Math.round((metrics.completeness + metrics.consistency + metrics.validity + metrics.freshness) / 4)
+})
+
+const measurementRows = computed(() => {
+  if (!props.schema?.measurements) return []
+
+  return props.schema.measurements.map(measurement => ({
+    name: measurement,
+    tags: props.schema.tags?.[measurement]?.length || 0,
+    fields: props.schema.fields?.[measurement]?.length || 0,
+    lastUpdated: new Date().toLocaleDateString()
+  }))
+})
+
+const measurementColumns = [
+  {
+    name: 'name',
+    label: 'Measurement',
+    field: 'name',
+    align: 'left',
+    sortable: true
+  },
+  {
+    name: 'tags',
+    label: 'Tags',
+    field: 'tags',
+    align: 'center',
+    sortable: true
+  },
+  {
+    name: 'fields',
+    label: 'Fields',
+    field: 'fields',
+    align: 'center',
+    sortable: true
+  },
+  {
+    name: 'lastUpdated',
+    label: 'Last Updated',
+    field: 'lastUpdated',
+    align: 'center',
+    sortable: true
+  },
+  {
+    name: 'actions',
+    label: 'Actions',
+    field: 'actions',
+    align: 'center'
   }
-})
+]
 
-const recentMappings = computed(() => {
-  return props.mappings.slice(0, 3)
-})
-
-const totalTagsCount = computed(() => {
-  return props.mappings.reduce((total, mapping) => {
-    return total + Object.keys(mapping.tag_mappings || {}).length
-  }, 0)
-})
-
-const totalFieldsCount = computed(() => {
-  return props.mappings.reduce((total, mapping) => {
-    return total + Object.keys(mapping.field_mappings || {}).length
-  }, 0)
+const dataTypeStats = computed(() => {
+  // This would be calculated from actual schema data
+  const stats = [
+    { name: 'Number', count: 45, percentage: 60 },
+    { name: 'String', count: 18, percentage: 24 },
+    { name: 'Boolean', count: 8, percentage: 11 },
+    { name: 'DateTime', count: 4, percentage: 5 }
+  ]
+  return stats
 })
 
 // Methods
-onMounted(() => {
-  loadSchemaInfo()
-  loadEquipmentNames()
-})
-
-const loadSchemaInfo = async () => {
-  // This would typically load cached schema information
-  // For now, we'll simulate it
-  discoveredMeasurements.value = [
-    'equipment_data',
-    'sensor_readings',
-    'battery_status',
-    'environmental_data'
-  ]
-}
-
-const loadEquipmentNames = async () => {
-  // Load equipment names for mapping display
-  const equipmentIds = [...new Set(props.mappings.map(m => m.equipment_id))]
-
-  for (const id of equipmentIds) {
-    try {
-      // This would typically fetch from API
-      equipmentNames.value[id] = `Equipment ${id}`
-    } catch (error) {
-      equipmentNames.value[id] = `Unknown Equipment`
-    }
+const getTypeIcon = (type) => {
+  const icons = {
+    Number: '123',
+    String: 'abc',
+    Boolean: 'toggle_on',
+    DateTime: 'schedule'
   }
+  return icons[type] || 'help'
 }
 
-const getEquipmentName = (equipmentId) => {
-  return equipmentNames.value[equipmentId] || `Equipment ${equipmentId}`
-}
-
-const maskToken = (token) => {
-  if (!token) return 'Not set'
-  if (token.length <= 8) return '••••••••'
-  return token.substring(0, 4) + '••••••••' + token.substring(token.length - 4)
-}
-
-const formatDate = (dateString) => {
-  if (!dateString) return 'Unknown'
-  try {
-    return new Date(dateString).toLocaleDateString()
-  } catch {
-    return 'Invalid date'
+const getTypeColor = (type) => {
+  const colors = {
+    Number: 'blue',
+    String: 'green',
+    Boolean: 'orange',
+    DateTime: 'purple'
   }
+  return colors[type] || 'grey'
 }
 
-const formatDateTime = (dateString) => {
-  if (!dateString) return 'Unknown'
-  try {
-    return new Date(dateString).toLocaleString()
-  } catch {
-    return 'Invalid date'
+const getSeverityIcon = (severity) => {
+  const icons = {
+    error: 'error',
+    warning: 'warning',
+    info: 'info'
   }
+  return icons[severity] || 'help'
 }
 
-const refreshHealth = async () => {
-  refreshingHealth.value = true
+const getSeverityColor = (severity) => {
+  const colors = {
+    error: 'negative',
+    warning: 'warning',
+    info: 'info'
+  }
+  return colors[severity] || 'grey'
+}
+
+const formatRelativeTime = (timestamp) => {
+  const now = new Date()
+  const diff = now - timestamp
+  const minutes = Math.floor(diff / (1000 * 60))
+  const hours = Math.floor(diff / (1000 * 60 * 60))
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24))
+
+  if (days > 0) return `${days} day${days > 1 ? 's' : ''} ago`
+  if (hours > 0) return `${hours} hour${hours > 1 ? 's' : ''} ago`
+  if (minutes > 0) return `${minutes} minute${minutes > 1 ? 's' : ''} ago`
+  return 'Just now'
+}
+
+const refreshSchema = async () => {
+  refreshing.value = true
   try {
-    await new Promise(resolve => setTimeout(resolve, 1000)) // Simulate API call
-    emit('refresh')
+    emit('refresh-schema')
+
+    // Simulate refresh
+    await new Promise(resolve => setTimeout(resolve, 2000))
+
+    $q.notify({
+      type: 'positive',
+      message: 'Schema refreshed successfully'
+    })
+  } catch (error) {
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to refresh schema',
+      caption: error.message
+    })
   } finally {
-    refreshingHealth.value = false
+    refreshing.value = false
   }
 }
+
+const exportSchema = () => {
+  const schemaData = {
+    source: props.source,
+    schema: props.schema,
+    exportDate: new Date().toISOString()
+  }
+
+  const blob = new Blob([JSON.stringify(schemaData, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `schema-${props.source.source_name}-${new Date().toISOString().slice(0, 10)}.json`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+
+  $q.notify({
+    type: 'positive',
+    message: 'Schema exported successfully'
+  })
+}
+
+const runQualityCheck = async () => {
+  checkingQuality.value = true
+  try {
+    // Simulate quality check
+    await new Promise(resolve => setTimeout(resolve, 3000))
+
+    // Update health metrics
+    healthMetrics.value = {
+      completeness: Math.min(100, healthMetrics.value.completeness + Math.random() * 10),
+      consistency: Math.min(100, healthMetrics.value.consistency + Math.random() * 5),
+      validity: Math.min(100, healthMetrics.value.validity + Math.random() * 15),
+      freshness: Math.min(100, healthMetrics.value.freshness + Math.random() * 3)
+    }
+
+    $q.notify({
+      type: 'positive',
+      message: 'Quality check completed',
+      caption: `Schema score: ${schemaScore.value}%`
+    })
+  } catch (error) {
+    $q.notify({
+      type: 'negative',
+      message: 'Quality check failed',
+      caption: error.message
+    })
+  } finally {
+    checkingQuality.value = false
+  }
+}
+
+const discoverMeasurements = async () => {
+  discovering.value = true
+  try {
+    emit('refresh-schema')
+    await new Promise(resolve => setTimeout(resolve, 2000))
+  } finally {
+    discovering.value = false
+  }
+}
+
+const discoverMeasurement = (measurementName) => {
+  emit('discover-measurement', measurementName)
+}
+
+const createMapping = (measurementName) => {
+  emit('create-mapping', measurementName)
+}
+
+const fixIssue = (issue) => {
+  $q.notify({
+    type: 'info',
+    message: `Fixing issue: ${issue.title}`,
+    caption: 'This feature is coming soon'
+  })
+}
+
+// Lifecycle
+onMounted(() => {
+  // Initialize component
+})
 </script>
 
 <style scoped>
-.source-overview {
-  background-color: #fafafa;
-  min-height: 100%;
+.schema-overview {
+  width: 100%;
 }
 
-.q-card {
-  border-radius: 12px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
-}
-
-.bg-green-1 {
-  background-color: rgba(76, 175, 80, 0.1);
-}
-
-.bg-red-1 {
-  background-color: rgba(244, 67, 54, 0.1);
+.text-h4 {
+  font-weight: 600;
 }
 
 .q-chip {
-  font-weight: 500;
+  font-size: 11px;
 }
 
-.q-item {
-  border-radius: 8px;
-  margin-bottom: 4px;
-}
-
-.q-item:hover {
-  background-color: rgba(0, 0, 0, 0.02);
+.q-timeline {
+  padding: 0;
 }
 </style>

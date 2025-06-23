@@ -1,0 +1,902 @@
+<!-- ui/src/components/SchemaQuality.vue -->
+<!-- Schema quality assessment component -->
+
+<template>
+  <div class="schema-quality">
+    <!-- Quality Assessment Controls -->
+    <div class="row q-gutter-md q-mb-lg">
+      <div class="col-12">
+        <q-card flat bordered>
+          <q-card-section class="bg-red-1">
+            <div class="text-h6">
+              <q-icon name="verified" class="q-mr-sm" />
+              Schema Quality Assessment
+            </div>
+
+    <!-- Quality Issues -->
+    <div class="row q-gutter-md q-mb-lg">
+      <div class="col-12">
+        <q-card flat bordered>
+          <q-card-section class="bg-orange-1">
+            <div class="text-h6">
+              <q-icon name="warning" class="q-mr-sm" />
+              Quality Issues ({{ filteredIssues.length }})
+            </div>
+          </q-card-section>
+          <q-card-section>
+            <div v-if="filteredIssues.length === 0" class="text-center q-pa-lg">
+              <q-icon name="check_circle" size="3rem" color="positive" class="q-mb-md" />
+              <div class="text-h6 text-positive">No Quality Issues Found</div>
+              <div class="text-body2 text-grey-6">
+                Your schema meets all quality standards for the selected scope
+              </div>
+            </div>
+            <q-table
+              v-else
+              :rows="filteredIssues"
+              :columns="issueColumns"
+              row-key="id"
+              flat
+              :pagination="{ rowsPerPage: 15 }"
+            >
+              <template #body-cell-severity="props">
+                <q-td :props="props">
+                  <q-chip
+                    :color="getSeverityColor(props.value)"
+                    text-color="white"
+                    size="sm"
+                    :icon="getSeverityIcon(props.value)"
+                  >
+                    {{ props.value }}
+                  </q-chip>
+                </q-td>
+              </template>
+              <template #body-cell-category="props">
+                <q-td :props="props">
+                  <q-chip
+                    :color="getCategoryColor(props.value)"
+                    text-color="white"
+                    size="sm"
+                  >
+                    {{ props.value }}
+                  </q-chip>
+                </q-td>
+              </template>
+              <template #body-cell-actions="props">
+                <q-td :props="props">
+                  <div class="q-gutter-xs">
+                    <q-btn
+                      icon="visibility"
+                      flat
+                      round
+                      size="sm"
+                      @click="viewIssueDetails(props.row)"
+                    >
+                      <q-tooltip>View Details</q-tooltip>
+                    </q-btn>
+                    <q-btn
+                      icon="build"
+                      flat
+                      round
+                      size="sm"
+                      color="primary"
+                      @click="fixIssue(props.row)"
+                      :loading="fixingIssues.includes(props.row.id)"
+                    >
+                      <q-tooltip>Fix Issue</q-tooltip>
+                    </q-btn>
+                    <q-btn
+                      icon="visibility_off"
+                      flat
+                      round
+                      size="sm"
+                      color="grey"
+                      @click="ignoreIssue(props.row)"
+                    >
+                      <q-tooltip>Ignore</q-tooltip>
+                    </q-btn>
+                  </div>
+                </q-td>
+              </template>
+            </q-table>
+          </q-card-section>
+        </q-card>
+      </div>
+    </div>
+
+    <!-- Quality Trends -->
+    <div class="row q-gutter-md q-mb-lg">
+      <div class="col-12 col-md-6">
+        <q-card flat bordered>
+          <q-card-section class="bg-green-1">
+            <div class="text-h6">
+              <q-icon name="trending_up" class="q-mr-sm" />
+              Quality Trends
+            </div>
+          </q-card-section>
+          <q-card-section>
+            <div v-if="qualityTrends.length === 0" class="text-center q-pa-md text-grey-6">
+              <q-icon name="timeline" size="2rem" class="q-mb-sm" />
+              <div>No trend data available</div>
+            </div>
+            <div v-else>
+              <!-- Simple trend visualization -->
+              <div v-for="trend in qualityTrends" :key="trend.dimension" class="q-mb-md">
+                <div class="row items-center q-gutter-sm q-mb-xs">
+                  <div class="text-body2">{{ trend.dimension }}</div>
+                  <q-space />
+                  <q-chip
+                    :color="getTrendColor(trend.direction)"
+                    text-color="white"
+                    size="sm"
+                    :icon="getTrendIcon(trend.direction)"
+                  >
+                    {{ trend.change }}%
+                  </q-chip>
+                </div>
+                <q-linear-progress
+                  :value="trend.currentScore / 100"
+                  :color="getScoreColor(trend.currentScore)"
+                  size="12px"
+                />
+                <div class="text-caption text-grey-6 q-mt-xs">
+                  {{ trend.description }}
+                </div>
+              </div>
+            </div>
+          </q-card-section>
+        </q-card>
+      </div>
+
+      <!-- Recommendations -->
+      <div class="col-12 col-md-6">
+        <q-card flat bordered>
+          <q-card-section class="bg-purple-1">
+            <div class="text-h6">
+              <q-icon name="lightbulb" class="q-mr-sm" />
+              Quality Recommendations
+            </div>
+          </q-card-section>
+          <q-card-section>
+            <q-list dense>
+              <q-item v-for="recommendation in qualityRecommendations" :key="recommendation.id">
+                <q-item-section avatar>
+                  <q-icon
+                    :name="getRecommendationIcon(recommendation.type)"
+                    :color="getRecommendationColor(recommendation.priority)"
+                  />
+                </q-item-section>
+                <q-item-section>
+                  <q-item-label>{{ recommendation.title }}</q-item-label>
+                  <q-item-label caption>{{ recommendation.description }}</q-item-label>
+                </q-item-section>
+                <q-item-section side>
+                  <div class="column q-gutter-xs">
+                    <q-chip
+                      :color="getRecommendationColor(recommendation.priority)"
+                      text-color="white"
+                      size="sm"
+                    >
+                      {{ recommendation.priority }}
+                    </q-chip>
+                    <q-btn
+                      label="Apply"
+                      size="sm"
+                      flat
+                      color="primary"
+                      @click="applyRecommendation(recommendation)"
+                    />
+                  </div>
+                </q-item-section>
+              </q-item>
+            </q-list>
+          </q-card-section>
+        </q-card>
+      </div>
+    </div>
+
+    <!-- Detailed Quality Metrics -->
+    <div class="row q-gutter-md q-mb-lg">
+      <div class="col-12">
+        <q-card flat bordered>
+          <q-card-section class="bg-teal-1">
+            <div class="text-h6">
+              <q-icon name="analytics" class="q-mr-sm" />
+              Detailed Quality Metrics
+            </div>
+          </q-card-section>
+          <q-card-section>
+            <q-table
+              :rows="detailedMetrics"
+              :columns="metricsColumns"
+              row-key="measurement"
+              flat
+              :pagination="{ rowsPerPage: 10 }"
+            >
+              <template #body-cell-measurement="props">
+                <q-td :props="props">
+                  <q-chip color="primary" text-color="white" size="sm">
+                    {{ props.value }}
+                  </q-chip>
+                </q-td>
+              </template>
+              <template #body-cell-completeness="props">
+                <q-td :props="props">
+                  <div class="row items-center q-gutter-sm">
+                    <q-linear-progress
+                      :value="props.value / 100"
+                      :color="getScoreColor(props.value)"
+                      size="20px"
+                      style="width: 80px;"
+                    />
+                    <span class="text-caption">{{ props.value }}%</span>
+                  </div>
+                </q-td>
+              </template>
+              <template #body-cell-accuracy="props">
+                <q-td :props="props">
+                  <div class="row items-center q-gutter-sm">
+                    <q-linear-progress
+                      :value="props.value / 100"
+                      :color="getScoreColor(props.value)"
+                      size="20px"
+                      style="width: 80px;"
+                    />
+                    <span class="text-caption">{{ props.value }}%</span>
+                  </div>
+                </q-td>
+              </template>
+              <template #body-cell-consistency="props">
+                <q-td :props="props">
+                  <div class="row items-center q-gutter-sm">
+                    <q-linear-progress
+                      :value="props.value / 100"
+                      :color="getScoreColor(props.value)"
+                      size="20px"
+                      style="width: 80px;"
+                    />
+                    <span class="text-caption">{{ props.value }}%</span>
+                  </div>
+                </q-td>
+              </template>
+              <template #body-cell-validity="props">
+                <q-td :props="props">
+                  <div class="row items-center q-gutter-sm">
+                    <q-linear-progress
+                      :value="props.value / 100"
+                      :color="getScoreColor(props.value)"
+                      size="20px"
+                      style="width: 80px;"
+                    />
+                    <span class="text-caption">{{ props.value }}%</span>
+                  </div>
+                </q-td>
+              </template>
+            </q-table>
+          </q-card-section>
+        </q-card>
+      </div>
+    </div>
+
+    <!-- Issue Details Dialog -->
+    <q-dialog v-model="showIssueDialog" maximized>
+      <q-card>
+        <q-card-section class="row items-center q-pb-none">
+          <div class="text-h6">Issue Details</div>
+          <q-space />
+          <q-btn icon="close" flat round dense @click="showIssueDialog = false" />
+        </q-card-section>
+        <q-card-section class="scroll">
+          <div v-if="selectedIssue">
+            <div class="row q-gutter-md">
+              <!-- Issue Information -->
+              <div class="col-12 col-md-6">
+                <q-card flat bordered>
+                  <q-card-section>
+                    <div class="text-subtitle1 q-mb-md">Issue Information</div>
+                    <q-list dense>
+                      <q-item>
+                        <q-item-section>
+                          <q-item-label caption>Title</q-item-label>
+                          <q-item-label>{{ selectedIssue.title }}</q-item-label>
+                        </q-item-section>
+                      </q-item>
+                      <q-item>
+                        <q-item-section>
+                          <q-item-label caption>Description</q-item-label>
+                          <q-item-label>{{ selectedIssue.description }}</q-item-label>
+                        </q-item-section>
+                      </q-item>
+                      <q-item>
+                        <q-item-section>
+                          <q-item-label caption>Severity</q-item-label>
+                          <q-item-label>
+                            <q-chip
+                              :color="getSeverityColor(selectedIssue.severity)"
+                              text-color="white"
+                              size="sm"
+                            >
+                              {{ selectedIssue.severity }}
+                            </q-chip>
+                          </q-item-label>
+                        </q-item-section>
+                      </q-item>
+                      <q-item>
+                        <q-item-section>
+                          <q-item-label caption>Category</q-item-label>
+                          <q-item-label>{{ selectedIssue.category }}</q-item-label>
+                        </q-item-section>
+                      </q-item>
+                      <q-item>
+                        <q-item-section>
+                          <q-item-label caption>Measurement</q-item-label>
+                          <q-item-label>{{ selectedIssue.measurement }}</q-item-label>
+                        </q-item-section>
+                      </q-item>
+                    </q-list>
+                  </q-card-section>
+                </q-card>
+              </div>
+
+              <!-- Resolution Steps -->
+              <div class="col-12 col-md-6">
+                <q-card flat bordered>
+                  <q-card-section>
+                    <div class="text-subtitle1 q-mb-md">Resolution Steps</div>
+                    <q-list dense>
+                      <q-item v-for="(step, index) in selectedIssue.resolutionSteps" :key="index">
+                        <q-item-section avatar>
+                          <q-avatar :color="index === 0 ? 'primary' : 'grey'" text-color="white" size="sm">
+                            {{ index + 1 }}
+                          </q-avatar>
+                        </q-item-section>
+                        <q-item-section>
+                          <q-item-label>{{ step }}</q-item-label>
+                        </q-item-section>
+                      </q-item>
+                    </q-list>
+                  </q-card-section>
+                </q-card>
+              </div>
+            </div>
+          </div>
+        </q-card-section>
+        <q-card-actions align="right">
+          <q-btn label="Close" flat @click="showIssueDialog = false" />
+          <q-btn
+            label="Fix Issue"
+            color="primary"
+            @click="fixSelectedIssue"
+            :loading="fixingIssues.includes(selectedIssue?.id)"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
+  </div>
+</template>
+
+<script setup>
+import { ref, computed, onMounted } from 'vue'
+import { useQuasar } from 'quasar'
+
+// Props
+const props = defineProps({
+  schema: {
+    type: Object,
+    default: null
+  },
+  qualityMetrics: {
+    type: Object,
+    default: () => ({})
+  }
+})
+
+// Emits
+const emit = defineEmits(['run-quality-check', 'fix-quality-issue'])
+
+// Reactive data
+const $q = useQuasar()
+const assessmentScope = ref('all')
+const selectedDimensions = ref(['completeness', 'accuracy', 'consistency', 'validity'])
+const severityFilter = ref('all')
+const assessing = ref(false)
+const refreshing = ref(false)
+const showIssueDialog = ref(false)
+const selectedIssue = ref(null)
+const fixingIssues = ref([])
+
+const overallScore = ref(85)
+const qualityIssues = ref([])
+const qualityDimensions = ref([])
+const qualityTrends = ref([])
+const qualityRecommendations = ref([])
+const detailedMetrics = ref([])
+
+// Computed properties
+const scopeOptions = [
+  { label: 'All Measurements', value: 'all' },
+  { label: 'Current Selection', value: 'selected' },
+  { label: 'Critical Only', value: 'critical' },
+  { label: 'Recent Changes', value: 'recent' }
+]
+
+const dimensionOptions = [
+  { label: 'Completeness', value: 'completeness' },
+  { label: 'Accuracy', value: 'accuracy' },
+  { label: 'Consistency', value: 'consistency' },
+  { label: 'Validity', value: 'validity' },
+  { label: 'Uniqueness', value: 'uniqueness' },
+  { label: 'Timeliness', value: 'timeliness' }
+]
+
+const severityOptions = [
+  { label: 'All Issues', value: 'all' },
+  { label: 'Critical Only', value: 'critical' },
+  { label: 'High & Critical', value: 'high_critical' },
+  { label: 'Medium & Above', value: 'medium_above' }
+]
+
+const filteredIssues = computed(() => {
+  if (severityFilter.value === 'all') return qualityIssues.value
+
+  const severityMap = {
+    critical: ['Critical'],
+    high_critical: ['Critical', 'High'],
+    medium_above: ['Critical', 'High', 'Medium']
+  }
+
+  const allowedSeverities = severityMap[severityFilter.value] || []
+  return qualityIssues.value.filter(issue => allowedSeverities.includes(issue.severity))
+})
+
+const issueColumns = [
+  {
+    name: 'severity',
+    label: 'Severity',
+    field: 'severity',
+    align: 'center',
+    sortable: true
+  },
+  {
+    name: 'category',
+    label: 'Category',
+    field: 'category',
+    align: 'center',
+    sortable: true
+  },
+  {
+    name: 'title',
+    label: 'Issue',
+    field: 'title',
+    align: 'left',
+    sortable: true
+  },
+  {
+    name: 'measurement',
+    label: 'Measurement',
+    field: 'measurement',
+    align: 'left',
+    sortable: true
+  },
+  {
+    name: 'impact',
+    label: 'Impact',
+    field: 'impact',
+    align: 'left',
+    sortable: true
+  },
+  {
+    name: 'actions',
+    label: 'Actions',
+    field: 'actions',
+    align: 'center'
+  }
+]
+
+const metricsColumns = [
+  {
+    name: 'measurement',
+    label: 'Measurement',
+    field: 'measurement',
+    align: 'left',
+    sortable: true
+  },
+  {
+    name: 'completeness',
+    label: 'Completeness',
+    field: 'completeness',
+    align: 'center',
+    sortable: true
+  },
+  {
+    name: 'accuracy',
+    label: 'Accuracy',
+    field: 'accuracy',
+    align: 'center',
+    sortable: true
+  },
+  {
+    name: 'consistency',
+    label: 'Consistency',
+    field: 'consistency',
+    align: 'center',
+    sortable: true
+  },
+  {
+    name: 'validity',
+    label: 'Validity',
+    field: 'validity',
+    align: 'center',
+    sortable: true
+  }
+]
+
+// Methods
+const getScoreColor = (score) => {
+  if (score >= 90) return 'positive'
+  if (score >= 70) return 'warning'
+  return 'negative'
+}
+
+const getScoreGrade = (score) => {
+  if (score >= 90) return 'Excellent'
+  if (score >= 80) return 'Good'
+  if (score >= 70) return 'Fair'
+  if (score >= 60) return 'Poor'
+  return 'Critical'
+}
+
+const getSeverityColor = (severity) => {
+  const colors = {
+    Critical: 'negative',
+    High: 'red',
+    Medium: 'warning',
+    Low: 'info'
+  }
+  return colors[severity] || 'grey'
+}
+
+const getSeverityIcon = (severity) => {
+  const icons = {
+    Critical: 'error',
+    High: 'warning',
+    Medium: 'info',
+    Low: 'help'
+  }
+  return icons[severity] || 'help'
+}
+
+const getCategoryColor = (category) => {
+  const colors = {
+    'Data Completeness': 'blue',
+    'Data Accuracy': 'green',
+    'Data Consistency': 'orange',
+    'Data Validity': 'purple',
+    'Schema Structure': 'teal'
+  }
+  return colors[category] || 'grey'
+}
+
+const getTrendColor = (direction) => {
+  const colors = {
+    improving: 'positive',
+    declining: 'negative',
+    stable: 'info'
+  }
+  return colors[direction] || 'grey'
+}
+
+const getTrendIcon = (direction) => {
+  const icons = {
+    improving: 'trending_up',
+    declining: 'trending_down',
+    stable: 'trending_flat'
+  }
+  return icons[direction] || 'help'
+}
+
+const getRecommendationIcon = (type) => {
+  const icons = {
+    validation: 'verified',
+    cleanup: 'cleaning_services',
+    structure: 'account_tree',
+    performance: 'speed'
+  }
+  return icons[type] || 'lightbulb'
+}
+
+const getRecommendationColor = (priority) => {
+  const colors = {
+    High: 'negative',
+    Medium: 'warning',
+    Low: 'info'
+  }
+  return colors[priority] || 'grey'
+}
+
+const updateAssessment = () => {
+  // Trigger assessment update when parameters change
+  if (qualityDimensions.value.length > 0) {
+    runQualityCheck()
+  }
+}
+
+const filterIssues = () => {
+  // Filtering is handled by computed property
+}
+
+const runQualityCheck = async () => {
+  assessing.value = true
+
+  try {
+    // Simulate quality assessment
+    await new Promise(resolve => setTimeout(resolve, 4000))
+
+    // Generate quality dimensions
+    qualityDimensions.value = selectedDimensions.value.map(dimension => {
+      const scores = {
+        completeness: 92,
+        accuracy: 88,
+        consistency: 85,
+        validity: 78,
+        uniqueness: 95,
+        timeliness: 82
+      }
+
+      const descriptions = {
+        completeness: 'Data presence',
+        accuracy: 'Data correctness',
+        consistency: 'Data uniformity',
+        validity: 'Data conformity',
+        uniqueness: 'Data distinctness',
+        timeliness: 'Data freshness'
+      }
+
+      return {
+        name: dimension.charAt(0).toUpperCase() + dimension.slice(1),
+        score: scores[dimension] || Math.floor(Math.random() * 30 + 70),
+        description: descriptions[dimension] || 'Data quality metric'
+      }
+    })
+
+    // Calculate overall score
+    const avgScore = qualityDimensions.value.reduce((sum, dim) => sum + dim.score, 0) / qualityDimensions.value.length
+    overallScore.value = Math.round(avgScore)
+
+    // Generate quality issues
+    qualityIssues.value = [
+      {
+        id: 1,
+        severity: 'High',
+        category: 'Data Completeness',
+        title: 'Missing timestamp values',
+        measurement: 'battery_voltage',
+        impact: 'Prevents time-series analysis',
+        description: 'Some records lack proper timestamp information',
+        resolutionSteps: [
+          'Identify records with missing timestamps',
+          'Implement timestamp validation rules',
+          'Backfill missing timestamps where possible'
+        ]
+      },
+      {
+        id: 2,
+        severity: 'Medium',
+        category: 'Data Validity',
+        title: 'Out-of-range voltage values',
+        measurement: 'cell_voltage',
+        impact: 'May indicate sensor malfunction',
+        description: 'Voltage readings exceed expected operational range',
+        resolutionSteps: [
+          'Review sensor calibration',
+          'Set up range validation rules',
+          'Flag outlier values for review'
+        ]
+      },
+      {
+        id: 3,
+        severity: 'Low',
+        category: 'Data Consistency',
+        title: 'Inconsistent field naming',
+        measurement: 'temperature',
+        impact: 'Complicates data integration',
+        description: 'Temperature fields use different naming conventions',
+        resolutionSteps: [
+          'Standardize field naming convention',
+          'Create mapping documentation',
+          'Implement naming validation'
+        ]
+      }
+    ]
+
+    // Generate quality trends
+    qualityTrends.value = [
+      {
+        dimension: 'Completeness',
+        currentScore: 92,
+        direction: 'improving',
+        change: '+3.2',
+        description: 'Steady improvement over the last month'
+      },
+      {
+        dimension: 'Accuracy',
+        currentScore: 88,
+        direction: 'stable',
+        change: '+0.5',
+        description: 'Maintaining consistent accuracy levels'
+      },
+      {
+        dimension: 'Consistency',
+        currentScore: 85,
+        direction: 'declining',
+        change: '-1.8',
+        description: 'Slight decline due to new data sources'
+      }
+    ]
+
+    // Generate recommendations
+    qualityRecommendations.value = [
+      {
+        id: 1,
+        type: 'validation',
+        priority: 'High',
+        title: 'Implement Data Validation Rules',
+        description: 'Add validation rules for critical fields to prevent quality issues'
+      },
+      {
+        id: 2,
+        type: 'cleanup',
+        priority: 'Medium',
+        title: 'Clean Historical Data',
+        description: 'Review and clean existing data to improve overall quality scores'
+      },
+      {
+        id: 3,
+        type: 'structure',
+        priority: 'Low',
+        title: 'Standardize Schema',
+        description: 'Align field names and types across all measurements'
+      }
+    ]
+
+    // Generate detailed metrics
+    const measurements = props.schema?.measurements || ['battery_voltage', 'cell_voltage', 'temperature']
+    detailedMetrics.value = measurements.map(measurement => ({
+      measurement,
+      completeness: Math.floor(Math.random() * 20 + 80),
+      accuracy: Math.floor(Math.random() * 25 + 75),
+      consistency: Math.floor(Math.random() * 30 + 70),
+      validity: Math.floor(Math.random() * 35 + 65)
+    }))
+
+    emit('run-quality-check', {
+      scope: assessmentScope.value,
+      dimensions: selectedDimensions.value,
+      overallScore: overallScore.value,
+      issues: qualityIssues.value.length
+    })
+
+    $q.notify({
+      type: 'positive',
+      message: 'Quality assessment completed',
+      caption: `Overall score: ${overallScore.value}% - ${qualityIssues.value.length} issues found`
+    })
+
+  } catch (error) {
+    $q.notify({
+      type: 'negative',
+      message: 'Quality assessment failed',
+      caption: error.message
+    })
+  } finally {
+    assessing.value = false
+  }
+}
+
+const refreshAssessment = async () => {
+  refreshing.value = true
+  try {
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    await runQualityCheck()
+  } finally {
+    refreshing.value = false
+  }
+}
+
+const viewIssueDetails = (issue) => {
+  selectedIssue.value = issue
+  showIssueDialog.value = true
+}
+
+const fixIssue = async (issue) => {
+  fixingIssues.value.push(issue.id)
+
+  try {
+    // Simulate fixing issue
+    await new Promise(resolve => setTimeout(resolve, 2000))
+
+    // Remove from issues list
+    const index = qualityIssues.value.findIndex(i => i.id === issue.id)
+    if (index !== -1) {
+      qualityIssues.value.splice(index, 1)
+    }
+
+    emit('fix-quality-issue', issue)
+
+    $q.notify({
+      type: 'positive',
+      message: `Fixed: ${issue.title}`,
+      caption: 'Quality issue resolved successfully'
+    })
+
+  } catch (error) {
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to fix issue',
+      caption: error.message
+    })
+  } finally {
+    fixingIssues.value = fixingIssues.value.filter(id => id !== issue.id)
+  }
+}
+
+const fixSelectedIssue = () => {
+  if (selectedIssue.value) {
+    fixIssue(selectedIssue.value)
+    showIssueDialog.value = false
+  }
+}
+
+const ignoreIssue = (issue) => {
+  $q.dialog({
+    title: 'Ignore Issue',
+    message: `Are you sure you want to ignore "${issue.title}"?`,
+    cancel: true,
+    persistent: true
+  }).onOk(() => {
+    const index = qualityIssues.value.findIndex(i => i.id === issue.id)
+    if (index !== -1) {
+      qualityIssues.value.splice(index, 1)
+    }
+
+    $q.notify({
+      type: 'info',
+      message: 'Issue ignored'
+    })
+  })
+}
+
+const applyRecommendation = (recommendation) => {
+  $q.notify({
+    type: 'info',
+    message: `Applying: ${recommendation.title}`,
+    caption: 'Implementation details would be shown here'
+  })
+}
+
+// Lifecycle
+onMounted(() => {
+  // Auto-run quality check if schema is available
+  if (props.schema) {
+    runQualityCheck()
+  }
+})
+</script>
+
+<style scoped>
+.schema-quality {
+  width: 100%;
+}
+
+.text-h6 {
+  font-weight: 600;
+}
+
+.q-chip {
+  font-size: 11px;
+}
+
+.q-linear-progress {
+  border-radius: 4px;
+}
+</style>
