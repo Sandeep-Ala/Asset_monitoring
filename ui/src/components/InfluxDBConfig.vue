@@ -1,4 +1,4 @@
-<!-- ui/src/components/InfluxDBConfig.vue -->
+<!-- src/components/InfluxDBConfig.vue - Fixed input reset issue -->
 <template>
   <div class="influxdb-config">
     <q-form @submit.prevent="testConnection">
@@ -6,7 +6,7 @@
         <!-- Server URL -->
         <div class="col-12">
           <q-input
-            v-model="config.url"
+            v-model="localConfig.url"
             label="InfluxDB Server URL *"
             hint="e.g., http://localhost:8086 or https://your-influxdb.com"
             outlined
@@ -21,7 +21,7 @@
         <!-- Organization -->
         <div class="col-12 col-md-6">
           <q-input
-            v-model="config.org"
+            v-model="localConfig.org"
             label="Organization *"
             hint="Your InfluxDB organization name"
             outlined
@@ -36,7 +36,7 @@
         <!-- Bucket -->
         <div class="col-12 col-md-6">
           <q-input
-            v-model="config.bucket"
+            v-model="localConfig.bucket"
             label="Bucket *"
             hint="The bucket containing your data"
             outlined
@@ -51,7 +51,7 @@
         <!-- Token -->
         <div class="col-12">
           <q-input
-            v-model="config.token"
+            v-model="localConfig.token"
             :label="tokenLabel"
             hint="Your InfluxDB authentication token"
             outlined
@@ -84,7 +84,7 @@
                 <!-- Timeout -->
                 <div class="col-12 col-md-6">
                   <q-input
-                    v-model.number="config.timeout"
+                    v-model.number="localConfig.timeout"
                     label="Timeout (seconds)"
                     hint="Connection timeout in seconds"
                     type="number"
@@ -101,7 +101,7 @@
                 <!-- SSL Verification -->
                 <div class="col-12 col-md-6">
                   <q-toggle
-                    v-model="config.verify_ssl"
+                    v-model="localConfig.verify_ssl"
                     label="Verify SSL Certificate"
                     color="primary"
                   />
@@ -113,7 +113,7 @@
                 <!-- Default Measurement -->
                 <div class="col-12">
                   <q-input
-                    v-model="config.default_measurement"
+                    v-model="localConfig.default_measurement"
                     label="Default Measurement"
                     hint="Optional: Default measurement for queries"
                     outlined
@@ -199,7 +199,7 @@
                   </q-item-section>
                   <q-item-section>
                     <q-item-label caption>Server</q-item-label>
-                    <q-item-label>{{ config.url }}</q-item-label>
+                    <q-item-label>{{ localConfig.url }}</q-item-label>
                   </q-item-section>
                 </q-item>
 
@@ -209,7 +209,7 @@
                   </q-item-section>
                   <q-item-section>
                     <q-item-label caption>Organization</q-item-label>
-                    <q-item-label>{{ config.org }}</q-item-label>
+                    <q-item-label>{{ localConfig.org }}</q-item-label>
                   </q-item-section>
                 </q-item>
 
@@ -219,7 +219,7 @@
                   </q-item-section>
                   <q-item-section>
                     <q-item-label caption>Bucket</q-item-label>
-                    <q-item-label>{{ config.bucket }}</q-item-label>
+                    <q-item-label>{{ localConfig.bucket }}</q-item-label>
                   </q-item-section>
                 </q-item>
               </q-list>
@@ -232,7 +232,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 
 // Props
 const props = defineProps({
@@ -258,11 +258,8 @@ const defaultConfig = {
   default_measurement: ''
 }
 
-// Configuration object
-const config = computed({
-  get: () => ({ ...defaultConfig, ...props.modelValue }),
-  set: (value) => emit('update:modelValue', value)
-})
+// FIXED: Use a reactive ref instead of computed to prevent input reset
+const localConfig = ref({ ...defaultConfig })
 
 // Quick setup templates
 const templates = [
@@ -307,14 +304,14 @@ const urlRules = [
 
 // Computed properties
 const tokenLabel = computed(() => {
-  return config.value.token ? 'Authentication Token *' : 'Authentication Token * (Required)'
+  return localConfig.value.token ? 'Authentication Token *' : 'Authentication Token * (Required)'
 })
 
 const isFormValid = computed(() => {
-  return config.value.url &&
-         config.value.org &&
-         config.value.bucket &&
-         config.value.token
+  return localConfig.value.url &&
+         localConfig.value.org &&
+         localConfig.value.bucket &&
+         localConfig.value.token
 })
 
 // Methods
@@ -323,8 +320,8 @@ const testConnection = () => {
 }
 
 const applyTemplate = (template) => {
-  const newConfig = { ...config.value, ...template.config }
-  config.value = newConfig
+  // FIXED: Update the local config properly
+  Object.assign(localConfig.value, template.config)
 }
 
 const getConnectionDetails = () => {
@@ -341,10 +338,31 @@ const getConnectionDetails = () => {
   return 'Connection established successfully'
 }
 
-// Update parent when config changes
-watch(config, (newConfig) => {
-  emit('update:modelValue', newConfig)
+// FIXED: Watch localConfig and emit changes to parent
+watch(localConfig, (newConfig) => {
+  emit('update:modelValue', { ...newConfig })
 }, { deep: true })
+
+// FIXED: Watch for changes from parent and update local config
+watch(() => props.modelValue, (newValue) => {
+  if (newValue) {
+    // Only update if there are actual differences to prevent infinite loops
+    const hasChanges = Object.keys(newValue).some(key =>
+      newValue[key] !== localConfig.value[key]
+    )
+
+    if (hasChanges) {
+      localConfig.value = { ...defaultConfig, ...newValue }
+    }
+  }
+}, { deep: true })
+
+// FIXED: Initialize local config on mount
+onMounted(() => {
+  if (props.modelValue) {
+    localConfig.value = { ...defaultConfig, ...props.modelValue }
+  }
+})
 </script>
 
 <style scoped>

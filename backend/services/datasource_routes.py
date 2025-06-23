@@ -149,10 +149,10 @@ class ConnectionRoutes:
             config_dict = request.connection_config
             if isinstance(config_dict, str):
                 config_dict = json.loads(config_dict)
-                
+            print(config_dict)
             discovery_service = get_discovery_service(request.source_type, config_dict)
             result = discovery_service.test_connection()
-            
+            print(result)
             logger.info(f"Connection test result: {result.get('success', False)}")
             return ConnectionTestResponse(**result)
         except Exception as e:
@@ -175,6 +175,7 @@ class DiscoveryRoutes:
             logger.info(f"Discovering measurements for {request.source_type}")
             
             config_dict = request.connection_config
+            print(config_dict)
             if isinstance(config_dict, str):
                 config_dict = json.loads(config_dict)
                 

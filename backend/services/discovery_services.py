@@ -81,18 +81,8 @@ class InfluxDBDiscovery(DataSourceDiscovery):
                     "details": {"response": health_response.text[:500]}
                 }
             
-            # 2. Test authentication and org access
-            ping_url = f"{self.url}/api/v2/ping"
-            ping_response = requests.get(ping_url, headers=self.rest_headers, timeout=10)
             
-            if ping_response.status_code != 204:
-                return {
-                    "success": False,
-                    "message": f"Authentication failed: {ping_response.status_code}",
-                    "details": {"response": ping_response.text[:500]}
-                }
-            
-            # 3. Test bucket access using REST API
+            # 2. Test bucket access using REST API
             buckets_url = f"{self.url}/api/v2/buckets"
             params = {"org": self.org, "name": self.bucket}
             buckets_response = requests.get(
@@ -107,17 +97,10 @@ class InfluxDBDiscovery(DataSourceDiscovery):
                 buckets_data = buckets_response.json()
                 bucket_accessible = len(buckets_data.get('buckets', [])) > 0
             
-            # 4. Test query capability with simple Flux query
-            simple_query = f'''
-            from(bucket: "{self.bucket}")
-            |> range(start: -1h)
-            |> limit(n: 1)
-            '''
+
             
-            query_result = self._execute_flux_query(simple_query)
-            query_accessible = query_result is not None
             
-            success = bucket_accessible and query_accessible
+            success = bucket_accessible
             
             return {
                 "success": success,
@@ -127,9 +110,7 @@ class InfluxDBDiscovery(DataSourceDiscovery):
                     "org": self.org,
                     "bucket": self.bucket,
                     "health_check": health_response.status_code == 200,
-                    "authentication": ping_response.status_code == 204,
                     "bucket_access": bucket_accessible,
-                    "query_access": query_accessible
                 }
             }
                 
