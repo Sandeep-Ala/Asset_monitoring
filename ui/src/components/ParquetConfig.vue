@@ -6,7 +6,7 @@
         <!-- Base Path -->
         <div class="col-12">
           <q-input
-            v-model="config.base_path"
+            v-model="localConfig.base_path"
             label="Base Path *"
             hint="Root directory containing parquet files"
             outlined
@@ -30,7 +30,7 @@
         <!-- Path Pattern -->
         <div class="col-12">
           <q-input
-            v-model="config.path_pattern"
+            v-model="localConfig.path_pattern"
             label="File Pattern *"
             hint="Pattern to match parquet files (e.g., **/*.parquet)"
             outlined
@@ -55,7 +55,7 @@
                   clickable
                   outline
                   color="primary"
-                  @click="config.path_pattern = pattern.value"
+                  @click="localConfig.path_pattern = pattern.value"
                 />
               </div>
             </q-card-section>
@@ -74,7 +74,7 @@
                 <!-- Date Column -->
                 <div class="col-12 col-md-6">
                   <q-input
-                    v-model="config.date_column"
+                    v-model="localConfig.date_column"
                     label="Date Column"
                     hint="Column name containing timestamps"
                     outlined
@@ -88,7 +88,7 @@
                 <!-- Date Format -->
                 <div class="col-12 col-md-6">
                   <q-select
-                    v-model="config.date_format"
+                    v-model="localConfig.date_format"
                     :options="dateFormatOptions"
                     label="Date Format"
                     hint="Expected date format in files"
@@ -105,7 +105,7 @@
                 <!-- Partition Columns -->
                 <div class="col-12">
                   <q-select
-                    v-model="config.partition_columns"
+                    v-model="localConfig.partition_columns"
                     label="Partition Columns"
                     hint="Columns used for partitioning (optional)"
                     outlined
@@ -123,7 +123,7 @@
                 <!-- Max Files to Scan -->
                 <div class="col-12 col-md-6">
                   <q-input
-                    v-model.number="config.max_files_scan"
+                    v-model.number="localConfig.max_files_scan"
                     label="Max Files to Scan"
                     hint="Limit for schema discovery"
                     type="number"
@@ -140,7 +140,7 @@
                 <!-- Memory Limit -->
                 <div class="col-12 col-md-6">
                   <q-input
-                    v-model="config.memory_limit"
+                    v-model="localConfig.memory_limit"
                     label="Memory Limit (MB)"
                     hint="Memory limit for processing"
                     type="number"
@@ -157,7 +157,7 @@
                 <!-- Use Pandas -->
                 <div class="col-12">
                   <q-toggle
-                    v-model="config.use_pandas"
+                    v-model="localConfig.use_pandas"
                     label="Use Pandas Engine"
                     color="primary"
                   />
@@ -169,7 +169,7 @@
                 <!-- Cache Schema -->
                 <div class="col-12">
                   <q-toggle
-                    v-model="config.cache_schema"
+                    v-model="localConfig.cache_schema"
                     label="Cache Schema"
                     color="primary"
                   />
@@ -183,7 +183,7 @@
         </div>
 
         <!-- File Structure Preview -->
-        <div class="col-12" v-if="config.base_path">
+        <div class="col-12" v-if="localConfig.base_path">
           <q-card flat bordered>
             <q-card-section>
               <div class="row items-center justify-between">
@@ -201,7 +201,7 @@
 
               <div class="q-mt-md">
                 <div class="text-body2 text-grey-7 q-mb-sm">
-                  Pattern: <code>{{ config.base_path }}/{{ config.path_pattern }}</code>
+                  Pattern: <code>{{ localConfig.base_path }}/{{ localConfig.path_pattern }}</code>
                 </div>
 
                 <div v-if="scannedFiles.length > 0">
@@ -288,7 +288,7 @@
                   </q-item-section>
                   <q-item-section>
                     <q-item-label caption>Base Path</q-item-label>
-                    <q-item-label>{{ config.base_path }}</q-item-label>
+                    <q-item-label>{{ localConfig.base_path }}</q-item-label>
                   </q-item-section>
                 </q-item>
 
@@ -298,7 +298,7 @@
                   </q-item-section>
                   <q-item-section>
                     <q-item-label caption>Pattern</q-item-label>
-                    <q-item-label>{{ config.path_pattern }}</q-item-label>
+                    <q-item-label>{{ localConfig.path_pattern }}</q-item-label>
                   </q-item-section>
                 </q-item>
 
@@ -366,7 +366,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 
 // Props
 const props = defineProps({
@@ -397,11 +397,15 @@ const defaultConfig = {
   cache_schema: true
 }
 
-// Configuration object
-const config = computed({
-  get: () => ({ ...defaultConfig, ...props.modelValue }),
-  set: (value) => emit('update:modelValue', value)
-})
+// Local configuration object - this is the key fix
+const localConfig = ref({ ...defaultConfig })
+
+// Initialize local config when component mounts or props change
+const initializeConfig = () => {
+  if (props.modelValue) {
+    localConfig.value = { ...defaultConfig, ...props.modelValue }
+  }
+}
 
 // Options
 const commonPatterns = [
@@ -430,7 +434,7 @@ const commonPaths = [
 
 // Computed properties
 const isFormValid = computed(() => {
-  return config.value.base_path && config.value.path_pattern
+  return localConfig.value.base_path && localConfig.value.path_pattern
 })
 
 const previewFiles = computed(() => {
@@ -444,17 +448,17 @@ const testConnection = () => {
 
 const addPartitionColumn = (val, done) => {
   if (val && val.trim()) {
-    const columns = config.value.partition_columns || []
+    const columns = localConfig.value.partition_columns || []
     if (!columns.includes(val.trim())) {
       columns.push(val.trim())
-      config.value = { ...config.value, partition_columns: columns }
+      localConfig.value.partition_columns = [...columns]
     }
     done(val.trim(), 'add-unique')
   }
 }
 
 const selectPath = () => {
-  config.value = { ...config.value, base_path: tempPath.value }
+  localConfig.value.base_path = tempPath.value
   showPathDialog.value = false
   tempPath.value = ''
 }
@@ -522,21 +526,39 @@ const getConnectionDetails = () => {
   return parts.join(' • ') || 'Connection established successfully'
 }
 
-// Update parent when config changes
-watch(config, (newConfig) => {
-  emit('update:modelValue', newConfig)
+// Watch for changes in localConfig and emit to parent
+watch(localConfig, (newConfig) => {
+  emit('update:modelValue', { ...newConfig })
 }, { deep: true })
 
-// Auto-scan files when path changes
-watch(() => config.value.base_path, (newPath) => {
+// Watch for changes from parent and update local config
+watch(() => props.modelValue, (newValue) => {
+  if (newValue) {
+    // Only update if the values are actually different to avoid loops
+    const currentConfig = JSON.stringify(localConfig.value)
+    const newConfig = JSON.stringify({ ...defaultConfig, ...newValue })
+
+    if (currentConfig !== newConfig) {
+      localConfig.value = { ...defaultConfig, ...newValue }
+    }
+  }
+}, { deep: true })
+
+// Auto-scan files when base path changes
+watch(() => localConfig.value.base_path, (newPath) => {
   if (newPath && newPath.trim()) {
     // Auto-scan after a short delay
     setTimeout(() => {
-      if (config.value.base_path === newPath) {
+      if (localConfig.value.base_path === newPath) {
         scanFiles()
       }
     }, 500)
   }
+})
+
+// Initialize config on mount
+onMounted(() => {
+  initializeConfig()
 })
 </script>
 
