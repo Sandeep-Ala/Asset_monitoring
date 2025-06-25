@@ -116,15 +116,58 @@
       <q-separator />
 
       <q-card-section class="q-pa-none" style="max-height: 400px; overflow-y: auto;">
+        <!-- Multi-select toolbar -->
+        <div v-if="filteredColumns.length" class="q-pa-sm bg-grey-1 row items-center justify-between">
+          <div class="row items-center q-gutter-sm">
+            <q-checkbox
+              v-model="selectAll"
+              @update:model-value="toggleSelectAll"
+              :indeterminate="someSelected && !allSelected"
+            />
+            <span class="text-caption">
+              {{ selectedColumns.length }} of {{ filteredColumns.length }} selected
+            </span>
+          </div>
+          <div class="row q-gutter-xs">
+            <q-btn
+              v-if="selectedColumns.length > 0"
+              size="sm"
+              color="primary"
+              icon="drag_indicator"
+              label="Drag Selected"
+              :draggable="true"
+              @dragstart="startMultiColumnDrag"
+              @dragend="endDrag"
+              class="multi-drag-btn"
+            />
+            <q-btn
+              v-if="selectedColumns.length > 0"
+              size="sm"
+              flat
+              icon="clear"
+              @click="clearSelection"
+            />
+          </div>
+        </div>
+
         <q-list bordered separator v-if="filteredColumns.length">
           <q-item
             v-for="column in filteredColumns"
             :key="column.name"
             class="draggable-column"
-            :draggable="true"
+            :class="{ 'selected-column': selectedColumns.includes(column.name) }"
+            :draggable="!selectedColumns.includes(column.name)"
             @dragstart="startColumnDrag($event, column)"
             @dragend="endDrag"
+            @click="toggleColumnSelection(column.name)"
           >
+            <q-item-section avatar>
+              <q-checkbox
+                :model-value="selectedColumns.includes(column.name)"
+                @update:model-value="toggleColumnSelection(column.name)"
+                @click.stop
+              />
+            </q-item-section>
             <q-item-section avatar>
               <q-icon name="drag_indicator" color="grey-6" />
             </q-item-section>
@@ -216,7 +259,9 @@ export default {
     return {
       columnFilter: '',
       selectedCategories: [],
-      isDragging: false
+      isDragging: false,
+      selectedColumns: [], // For multi-select
+      selectAll: false
     }
   },
   computed: {
@@ -248,6 +293,14 @@ export default {
       }
 
       return columns
+    },
+
+    someSelected() {
+      return this.selectedColumns.length > 0 && this.selectedColumns.length < this.filteredColumns.length
+    },
+
+    allSelected() {
+      return this.selectedColumns.length === this.filteredColumns.length && this.filteredColumns.length > 0
     }
   },
   methods: {
@@ -299,6 +352,59 @@ export default {
       event.target.classList.remove('dragging')
     },
 
+    toggleColumnSelection(columnName) {
+      const index = this.selectedColumns.indexOf(columnName)
+      if (index > -1) {
+        this.selectedColumns.splice(index, 1)
+      } else {
+        this.selectedColumns.push(columnName)
+      }
+      this.updateSelectAllState()
+    },
+
+    toggleSelectAll() {
+      if (this.allSelected) {
+        this.selectedColumns = []
+      } else {
+        this.selectedColumns = this.filteredColumns.map(col => col.name)
+      }
+      this.updateSelectAllState()
+    },
+
+    updateSelectAllState() {
+      this.selectAll = this.allSelected
+    },
+
+    clearSelection() {
+      this.selectedColumns = []
+      this.selectAll = false
+    },
+
+    startMultiColumnDrag(event) {
+      console.log('🚀 Starting multi-column drag:', this.selectedColumns.length, 'columns')
+      this.isDragging = true
+
+      const selectedColumnData = this.filteredColumns.filter(col =>
+        this.selectedColumns.includes(col.name)
+      )
+
+      // Set drag data for multiple columns
+      event.dataTransfer.setData('application/json', JSON.stringify({
+        type: 'multi-column',
+        data: selectedColumnData,
+        sourceTable: this.selectedTable?.name,
+        count: selectedColumnData.length
+      }))
+
+      // Set drag effect
+      event.dataTransfer.effectAllowed = 'copy'
+
+      // Add visual feedback
+      event.target.classList.add('dragging')
+
+      this.$emit('column-drag-start', { type: 'multi', columns: selectedColumnData })
+    },
+
     toggleCategory(category) {
       const index = this.selectedCategories.indexOf(category)
       if (index > -1) {
@@ -331,9 +437,11 @@ export default {
   },
   watch: {
     selectedTable() {
-      // Reset filters when table changes
+      // Reset filters and selections when table changes
       this.columnFilter = ''
       this.selectedCategories = []
+      this.selectedColumns = []
+      this.selectAll = false
     }
   }
 }
@@ -385,6 +493,19 @@ export default {
 
 .q-card-section::-webkit-scrollbar-thumb:hover {
   background: #a8a8a8;
+}
+
+.selected-column {
+  background: #e3f2fd;
+  border-left: 4px solid #2196f3;
+}
+
+.multi-drag-btn {
+  cursor: grab;
+}
+
+.multi-drag-btn:active {
+  cursor: grabbing;
 }
 
 /* Animation for drag feedback */

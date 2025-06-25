@@ -88,6 +88,7 @@
                     <q-item-label>{{ equipment.name }}</q-item-label>
                     <q-item-label caption>
                       From: {{ equipment.source_table }}
+                      <span v-if="equipment.location"> • Location: {{ equipment.location }}</span>
                     </q-item-label>
                   </q-item-section>
                   <q-item-section side>
@@ -100,7 +101,7 @@
                         color="primary"
                         @click="editEquipment(equipment)"
                       >
-                        <q-tooltip>Edit name</q-tooltip>
+                        <q-tooltip>Edit equipment</q-tooltip>
                       </q-btn>
                       <q-btn
                         round
@@ -170,23 +171,49 @@
                   <q-item-section>
                     <q-item-label>{{ filter.filter_key }}</q-item-label>
                     <q-item-label caption>
-                      {{ filter.data_type }} • From: {{ filter.source_table }}
+                      {{ filter.data_type }} • Value: {{ filter.filter_value || 'Not set' }}
+                      <br>Equipment: {{ getEquipmentName(filter.eqp_id) || 'No equipment' }}
                     </q-item-label>
                   </q-item-section>
                   <q-item-section side>
-                    <q-btn
-                      round
-                      flat
-                      size="sm"
-                      icon="delete"
-                      color="negative"
-                      @click="removeFilter(filter)"
-                    >
-                      <q-tooltip>Remove</q-tooltip>
-                    </q-btn>
+                    <div class="row q-gutter-xs">
+                      <q-btn
+                        round
+                        flat
+                        size="sm"
+                        icon="edit"
+                        color="primary"
+                        @click="editFilter(filter)"
+                      >
+                        <q-tooltip>Edit filter</q-tooltip>
+                      </q-btn>
+                      <q-btn
+                        round
+                        flat
+                        size="sm"
+                        icon="delete"
+                        color="negative"
+                        @click="removeFilter(filter)"
+                      >
+                        <q-tooltip>Remove</q-tooltip>
+                      </q-btn>
+                    </div>
                   </q-item-section>
                 </q-item>
               </q-list>
+
+              <!-- Add Manual Filter Button -->
+              <div class="q-pa-sm">
+                <q-btn
+                  flat
+                  color="primary"
+                  icon="add"
+                  label="Add Manual Filter"
+                  @click="openManualFilterDialog"
+                  size="sm"
+                  class="full-width"
+                />
+              </div>
             </div>
 
             <!-- Empty Drop Zone -->
@@ -196,6 +223,14 @@
               <div class="text-body2 text-grey-7">
                 Drag any columns for grouping operations
               </div>
+              <q-btn
+                flat
+                color="primary"
+                icon="add"
+                label="Add Manual Filter"
+                @click="openManualFilterDialog"
+                class="q-mt-md"
+              />
             </div>
           </div>
         </q-card>
@@ -274,6 +309,7 @@
                         <q-item-label>{{ signal.key }}</q-item-label>
                         <q-item-label caption>
                           {{ signal.data_type }} • {{ signal.desc }}
+                          <span v-if="signal.unit"> • Unit: {{ signal.unit }}</span>
                         </q-item-label>
                       </q-item-section>
                       <q-item-section side>
@@ -408,24 +444,145 @@
 
     <!-- Equipment Edit Dialog -->
     <q-dialog v-model="showEditDialog" persistent>
-      <q-card style="min-width: 350px">
+      <q-card style="min-width: 400px">
         <q-card-section>
-          <div class="text-h6">Edit Equipment Name</div>
+          <div class="text-h6">Edit Equipment</div>
         </q-card-section>
 
         <q-card-section class="q-pt-none">
           <q-input
             v-model="editingEquipmentName"
-            label="Equipment Name"
+            label="Equipment Name *"
             outlined
-            autofocus
-            @keyup.enter="saveEquipmentEdit"
+            class="q-mb-md"
+          />
+          <q-input
+            v-model="editingEquipmentLocation"
+            label="Location (Optional)"
+            outlined
+            placeholder="Enter equipment location"
           />
         </q-card-section>
 
         <q-card-actions align="right" class="text-primary">
           <q-btn flat label="Cancel" v-close-popup />
           <q-btn flat label="Save" @click="saveEquipmentEdit" />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
+
+    <!-- Filter Dialog -->
+    <q-dialog v-model="showFilterDialog" persistent>
+      <q-card style="min-width: 400px">
+        <q-card-section>
+          <div class="text-h6">{{ editingFilter?.id ? 'Edit' : 'Add' }} Filter</div>
+        </q-card-section>
+
+        <q-card-section class="q-pt-none">
+          <q-input
+            v-model="filterForm.filter_key"
+            label="Filter Key *"
+            outlined
+            class="q-mb-md"
+            :readonly="!!editingFilter?.source_column"
+          />
+          <q-input
+            v-model="filterForm.filter_value"
+            label="Filter Value *"
+            outlined
+            placeholder="Enter filter value (e.g., '1', 'active', etc.)"
+            class="q-mb-md"
+          />
+          <q-select
+            v-model="filterForm.eqp_id"
+            :options="equipmentOptions"
+            option-label="name"
+            option-value="id"
+            label="Link to Equipment *"
+            outlined
+            map-options
+            emit-value
+          />
+        </q-card-section>
+
+        <q-card-actions align="right" class="text-primary">
+          <q-btn flat label="Cancel" v-close-popup @click="resetFilterForm" />
+          <q-btn flat label="Save" @click="saveFilter" />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
+
+    <!-- Add Manual Filter Dialog -->
+    <q-dialog v-model="showAddManualFilter" persistent>
+      <q-card style="min-width: 400px">
+        <q-card-section>
+          <div class="text-h6">Add Manual Filter</div>
+        </q-card-section>
+
+        <q-card-section class="q-pt-none">
+          <q-input
+            v-model="manualFilterForm.filter_key"
+            label="Filter Key *"
+            outlined
+            placeholder="Enter custom filter name"
+            class="q-mb-md"
+          />
+          <q-input
+            v-model="manualFilterForm.filter_value"
+            label="Filter Value *"
+            outlined
+            placeholder="Enter filter value"
+            class="q-mb-md"
+          />
+          <q-select
+            v-model="manualFilterForm.eqp_id"
+            :options="equipmentOptions"
+            option-label="name"
+            option-value="id"
+            label="Link to Equipment *"
+            outlined
+            map-options
+            emit-value
+            :disable="equipmentList.length === 0"
+            hint="Select which equipment this filter applies to"
+          />
+        </q-card-section>
+
+        <q-card-actions align="right" class="text-primary">
+          <q-btn flat label="Cancel" v-close-popup @click="resetManualFilterForm" />
+          <q-btn flat label="Add" @click="addManualFilter" />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
+
+    <!-- Signal Unit Dialog -->
+    <q-dialog v-model="showSignalDialog" persistent>
+      <q-card style="min-width: 400px">
+        <q-card-section>
+          <div class="text-h6">Add Signal{{ pendingSignals.length > 1 ? 's' : '' }}</div>
+        </q-card-section>
+
+        <q-card-section class="q-pt-none">
+          <div v-if="pendingSignals.length === 1" class="q-mb-md">
+            <strong>Signal:</strong> {{ pendingSignals[0]?.name }}
+          </div>
+          <div v-else class="q-mb-md">
+            <strong>Adding {{ pendingSignals.length }} signals:</strong>
+            <div class="text-caption">{{ pendingSignals.map(s => s.name).join(', ') }}</div>
+          </div>
+
+          <q-input
+            v-model="signalUnit"
+            label="Unit (Optional)"
+            outlined
+            placeholder="e.g., V, A, °C, %"
+            hint="Leave empty if no unit or different units for each signal"
+          />
+        </q-card-section>
+
+        <q-card-actions align="right" class="text-primary">
+          <q-btn flat label="Cancel" v-close-popup @click="resetSignalDialog" />
+          <q-btn flat label="Add Signal{{ pendingSignals.length > 1 ? 's' : '' }}" @click="confirmAddSignals" />
         </q-card-actions>
       </q-card>
     </q-dialog>
@@ -459,7 +616,8 @@ export default {
   },
   emits: [
     'equipment-drop', 'filter-drop', 'multi-tab-drop',
-    'equipment-edit', 'equipment-remove', 'filter-remove', 'multi-tab-remove'
+    'equipment-edit', 'equipment-remove', 'filter-edit', 'filter-remove',
+    'manual-filter-add', 'multi-tab-remove'
   ],
   data() {
     return {
@@ -472,15 +630,48 @@ export default {
       specsDragOver: false,
       docsDragOver: false,
 
-      // Edit dialog
+      // Edit dialogs
       showEditDialog: false,
       editingEquipment: null,
-      editingEquipmentName: ''
+      editingEquipmentName: '',
+      editingEquipmentLocation: '',
+
+      // Filter dialogs
+      showFilterDialog: false,
+      showAddManualFilter: false,
+      editingFilter: null,
+      filterForm: {
+        filter_key: '',
+        filter_value: '',
+        eqp_id: null
+      },
+      manualFilterForm: {
+        filter_key: '',
+        filter_value: '',
+        eqp_id: null
+      },
+
+      // Signal dialog
+      showSignalDialog: false,
+      pendingSignals: [],
+      signalUnit: ''
     }
   },
   computed: {
     totalMultiTabItems() {
       return Object.values(this.multiTabData).reduce((sum, arr) => sum + arr.length, 0)
+    },
+
+    equipmentOptions() {
+      console.log('🔍 Computing equipment options from:', this.equipmentList)
+      const options = this.equipmentList.map(eq => ({
+        id: eq.id,
+        name: eq.name,
+        label: eq.name, // Add label for q-select
+        value: eq.id    // Add value for q-select
+      }))
+      console.log('🔍 Equipment options generated:', options)
+      return options
     }
   },
   methods: {
@@ -512,10 +703,50 @@ export default {
         const dragData = JSON.parse(event.dataTransfer.getData('application/json'))
 
         if (dragData.type === 'column') {
-          this.$emit('filter-drop', dragData.data)
+          // Single column drop - show dialog for filter value and equipment selection
+          this.showFilterValueDialog(dragData.data)
+        } else if (dragData.type === 'multi-column') {
+          // Multi-column drop - process each column
+          this.showMultiFilterDialog(dragData.data)
         }
       } catch (error) {
         console.error('Filter drop error:', error)
+      }
+    },
+
+    showFilterValueDialog(column) {
+      this.filterForm = {
+        filter_key: column.name,
+        filter_value: '',
+        eqp_id: this.equipmentList.length > 0 ? this.equipmentList[0].id : null,
+        source_column: column.name,
+        source_table: this.selectedTable?.name,
+        data_type: column.data_type
+      }
+      this.editingFilter = null
+      this.showFilterDialog = true
+    },
+
+    showMultiFilterDialog(columns) {
+      // For multi-column, show dialog for first column, then auto-add others
+      if (columns.length === 1) {
+        this.showFilterValueDialog(columns[0])
+      } else {
+        // Add each column as separate filter with dialog for first one
+        this.showFilterValueDialog(columns[0])
+        // Auto-add remaining columns with default equipment and empty value
+        const defaultEquipmentId = this.equipmentList.length > 0 ? this.equipmentList[0].id : null
+
+        for (let i = 1; i < columns.length; i++) {
+          this.$emit('filter-drop', {
+            name: columns[i].name,
+            data_type: columns[i].data_type,
+            filter_value: '',
+            eqp_id: defaultEquipmentId,
+            source_table: this.selectedTable?.name,
+            source_column: columns[i].name
+          })
+        }
       }
     },
 
@@ -527,10 +758,30 @@ export default {
         const dragData = JSON.parse(event.dataTransfer.getData('application/json'))
 
         if (dragData.type === 'column') {
-          this.$emit('multi-tab-drop', {
-            column: dragData.data,
-            tabType: tabType
-          })
+          if (tabType === 'signals') {
+            // Show unit dialog for signals
+            this.pendingSignals = [dragData.data]
+            this.showSignalDialog = true
+          } else {
+            this.$emit('multi-tab-drop', {
+              column: dragData.data,
+              tabType: tabType
+            })
+          }
+        } else if (dragData.type === 'multi-column') {
+          if (tabType === 'signals') {
+            // Show unit dialog for multiple signals
+            this.pendingSignals = dragData.data
+            this.showSignalDialog = true
+          } else {
+            // Add multiple columns to other tabs
+            dragData.data.forEach(column => {
+              this.$emit('multi-tab-drop', {
+                column: column,
+                tabType: tabType
+              })
+            })
+          }
         }
       } catch (error) {
         console.error('Multi-tab drop error:', error)
@@ -540,14 +791,113 @@ export default {
     editEquipment(equipment) {
       this.editingEquipment = equipment
       this.editingEquipmentName = equipment.name
+      this.editingEquipmentLocation = equipment.location || ''
       this.showEditDialog = true
     },
 
     saveEquipmentEdit() {
       if (this.editingEquipmentName.trim()) {
-        this.$emit('equipment-edit', this.editingEquipment, this.editingEquipmentName.trim())
+        this.$emit('equipment-edit', this.editingEquipment, {
+          name: this.editingEquipmentName.trim(),
+          location: this.editingEquipmentLocation.trim()
+        })
         this.showEditDialog = false
       }
+    },
+
+    // Filter management methods
+    editFilter(filter) {
+      this.editingFilter = filter
+      this.filterForm = {
+        filter_key: filter.filter_key,
+        filter_value: filter.filter_value,
+        eqp_id: filter.eqp_id
+      }
+      this.showFilterDialog = true
+    },
+
+    saveFilter() {
+      if (this.filterForm.filter_key && this.filterForm.filter_value && this.filterForm.eqp_id) {
+        if (this.editingFilter) {
+          this.$emit('filter-edit', this.editingFilter, this.filterForm)
+        } else {
+          this.$emit('filter-drop', this.filterForm)
+        }
+        this.resetFilterForm()
+        this.showFilterDialog = false
+      }
+    },
+
+    resetFilterForm() {
+      this.filterForm = {
+        filter_key: '',
+        filter_value: '',
+        eqp_id: null
+      }
+      this.editingFilter = null
+    },
+
+    addManualFilter() {
+      if (this.manualFilterForm.filter_key && this.manualFilterForm.filter_value && this.manualFilterForm.eqp_id) {
+        this.$emit('manual-filter-add', this.manualFilterForm)
+        this.resetManualFilterForm()
+        this.showAddManualFilter = false
+      }
+    },
+
+    resetManualFilterForm() {
+      console.log('🔄 Resetting manual filter form')
+      this.manualFilterForm = {
+        filter_key: '',
+        filter_value: '',
+        eqp_id: null
+      }
+    },
+
+    // Signal dialog methods
+    confirmAddSignals() {
+      this.pendingSignals.forEach(column => {
+        this.$emit('multi-tab-drop', {
+          column: { ...column, unit: this.signalUnit },
+          tabType: 'signals'
+        })
+      })
+      this.resetSignalDialog()
+    },
+
+    resetSignalDialog() {
+      this.pendingSignals = []
+      this.signalUnit = ''
+      this.showSignalDialog = false
+    },
+
+    // Helper methods
+    getEquipmentName(equipmentId) {
+      const equipment = this.equipmentList.find(eq => eq.id === equipmentId)
+      return equipment ? equipment.name : 'Unknown'
+    },
+
+    openManualFilterDialog() {
+      console.log('🔧 Opening manual filter dialog')
+      console.log('🔧 Available equipment:', this.equipmentList)
+
+      if (this.equipmentList.length === 0) {
+        this.$q.notify({
+          type: 'warning',
+          message: 'Please create equipment first before adding filters',
+          timeout: 3000
+        })
+        return
+      }
+
+      // Reset form and set default equipment
+      this.resetManualFilterForm()
+      if (this.equipmentList.length > 0) {
+        this.manualFilterForm.eqp_id = this.equipmentList[0].id
+      }
+
+      this.showAddManualFilter = true
+      console.log('🔧 Manual filter dialog opened')
     },
 
     removeEquipment(equipment) {

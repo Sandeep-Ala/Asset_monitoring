@@ -281,13 +281,13 @@ export default {
       ).length
       const equipmentName = `${baseName}-${existingCount + 1}`
 
-      // Add equipment
+      // Add equipment with location field
       const equipment = {
         id: Date.now(), // Temporary ID
         name: equipmentName,
         source_table: table.name,
         model_id: null, // Will be set after master model is saved
-        location: '',
+        location: '', // Empty by default
         enable: 1,
         isNew: true
       }
@@ -302,30 +302,41 @@ export default {
       })
     },
 
-    onFilterDrop(column) {
-      console.log('🔧 Filter drop:', column)
+    onFilterDrop(data) {
+      console.log('🔧 Filter drop:', data)
 
-      // Check if already exists
-      const exists = this.filtersList.some(f =>
-        f.source_column === column.name && f.source_table === this.selectedTable?.name
+      // Handle both column drop and form data
+      const filterKey = data.filter_key || data.name
+      const filterValue = data.filter_value || ''
+      const equipmentId = data.eqp_id
+      const sourceTable = data.source_table || this.selectedTable?.name
+      const sourceColumn = data.source_column || data.name
+
+      // Allow same column with different equipment (different filter instances)
+      const existingFilter = this.filtersList.find(f =>
+        f.filter_key === filterKey &&
+        f.eqp_id === equipmentId &&
+        f.source_table === sourceTable
       )
 
-      if (exists) {
+      if (existingFilter) {
         this.$q.notify({
           type: 'warning',
-          message: `Filter "${column.name}" already exists`
+          message: `Filter "${filterKey}" already exists for this equipment`
         })
         return
       }
 
       const filter = {
         id: Date.now(),
-        filter_key: column.name,
-        filter_value: `{${column.name}}`, // Placeholder for dynamic values
-        source_table: this.selectedTable?.name,
-        source_column: column.name,
-        data_type: column.data_type,
-        isNew: true
+        filter_key: filterKey,
+        filter_value: filterValue,
+        eqp_id: equipmentId,
+        source_table: sourceTable,
+        source_column: sourceColumn,
+        data_type: data.data_type || 'text',
+        isNew: true,
+        isManual: data.isManual || false
       }
 
       this.filtersList.push(filter)
@@ -333,9 +344,69 @@ export default {
 
       this.$q.notify({
         type: 'positive',
-        message: `Filter "${column.name}" added`,
+        message: `Filter "${filterKey}" added`,
         timeout: 2000
       })
+    },
+
+    onFilterEdit(filter, updatedData) {
+      const index = this.filtersList.findIndex(f => f.id === filter.id)
+      if (index !== -1) {
+        this.filtersList[index] = { ...this.filtersList[index], ...updatedData }
+        this.hasUnsavedChanges = true
+
+        this.$q.notify({
+          type: 'positive',
+          message: `Filter "${filter.filter_key}" updated`,
+          timeout: 2000
+        })
+      }
+    },
+
+    onManualFilterAdd(filterData) {
+      console.log('🎯 Received manual-filter-add event:', filterData)
+      console.log('🎯 Current filtersList length:', this.filtersList.length)
+
+      // Check if manual filter with same key and equipment exists
+      const exists = this.filtersList.some(f =>
+        f.filter_key === filterData.filter_key &&
+        f.eqp_id === filterData.eqp_id &&
+        f.isManual
+      )
+
+      if (exists) {
+        console.log('⚠️ Manual filter already exists')
+        this.$q.notify({
+          type: 'warning',
+          message: `Manual filter "${filterData.filter_key}" already exists for this equipment`
+        })
+        return
+      }
+
+      const filter = {
+        id: Date.now(),
+        filter_key: filterData.filter_key,
+        filter_value: filterData.filter_value,
+        eqp_id: filterData.eqp_id,
+        source_table: null, // Manual filter
+        source_column: null,
+        data_type: 'manual',
+        isNew: true,
+        isManual: true
+      }
+
+      console.log('📝 Adding filter to list:', filter)
+      this.filtersList.push(filter)
+      console.log('📝 New filtersList length:', this.filtersList.length)
+      this.hasUnsavedChanges = true
+
+      this.$q.notify({
+        type: 'positive',
+        message: `Manual filter "${filterData.filter_key}" added`,
+        timeout: 2000
+      })
+
+      console.log('✅ Manual filter added successfully')
     },
 
     onMultiTabDrop(data) {
@@ -362,7 +433,7 @@ export default {
           id: Date.now(),
           key: column.name,
           value: column.name,
-          unit: column.unit || '',
+          unit: column.unit || '', // Use unit from dialog
           desc: `Signal from ${column.name}`,
           source_table: this.selectedTable?.name,
           source_column: column.name,
@@ -403,10 +474,16 @@ export default {
       })
     },
 
-    onEquipmentEdit(equipment, newName) {
+    onEquipmentEdit(equipment, updatedData) {
       const index = this.equipmentList.findIndex(eq => eq.id === equipment.id)
       if (index !== -1) {
-        this.equipmentList[index].name = newName
+        // Handle both old format (just name) and new format (object with name and location)
+        if (typeof updatedData === 'string') {
+          this.equipmentList[index].name = updatedData
+        } else {
+          this.equipmentList[index].name = updatedData.name
+          this.equipmentList[index].location = updatedData.location
+        }
         this.hasUnsavedChanges = true
       }
     },
@@ -456,6 +533,22 @@ export default {
         errors.push(`Duplicate equipment names: ${duplicateNames.join(', ')}`)
       }
 
+      // Validate filters have required values
+      const invalidFilters = this.filtersList.filter(f => !f.filter_value || !f.eqp_id)
+      if (invalidFilters.length > 0) {
+        const filterNames = invalidFilters.map(f => f.filter_key).join(', ')
+        errors.push(`Filters missing values or equipment assignment: ${filterNames}`)
+      }
+
+      // Validate filter equipment IDs exist
+      const filterWithInvalidEquipment = this.filtersList.filter(f =>
+        f.eqp_id && !this.equipmentList.some(eq => eq.id === f.eqp_id)
+      )
+      if (filterWithInvalidEquipment.length > 0) {
+        const filterNames = filterWithInvalidEquipment.map(f => f.filter_key).join(', ')
+        errors.push(`Filters linked to non-existent equipment: ${filterNames}`)
+      }
+
       return errors
     },
 
@@ -491,16 +584,23 @@ export default {
             console.log('✅ Equipment saved:', response.data)
 
             // Save filters for this equipment
-            const equipmentFilters = this.filtersList.filter(f => f.source_table === equipment.source_table)
+            const equipmentFilters = this.filtersList.filter(f => f.eqp_id === equipment.id)
             for (const filter of equipmentFilters) {
               if (filter.isNew) {
                 const filterData = {
-                  eqp_id: response.data.id,
+                  eqp_id: response.data.id, // Use the actual saved equipment ID
                   filter_key: filter.filter_key,
                   filter_value: filter.filter_value
                 }
-                await metaAPI.createFilter(filterData)
-                console.log('✅ Filter saved:', filterData)
+
+                console.log('💾 Saving filter:', filterData)
+                try {
+                  const filterResponse = await metaAPI.createFilter(filterData)
+                  console.log('✅ Filter saved successfully:', filterResponse.data)
+                } catch (filterError) {
+                  console.error('❌ Filter save failed:', filterError.response?.data || filterError.message)
+                  throw new Error(`Failed to save filter ${filter.filter_key}: ${filterError.response?.data?.detail || filterError.message}`)
+                }
               }
             }
 
