@@ -1,4 +1,4 @@
-# main.py
+# main.py (Updated)
 
 from fastapi import FastAPI, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,16 +7,17 @@ from services.duckdb_service import query_parquet_data
 from fastapi.responses import JSONResponse
 from services.meta_routes import router as meta_router
 from services.page_routes import router as page_router
+from services.datasource_routes import router as datasource_router  # New import
 from pydantic import BaseModel
 from typing import List
 
 from typing import Optional
 app = FastAPI()
 
-
+# Include all routers
 app.include_router(meta_router)
 app.include_router(page_router)
-
+app.include_router(datasource_router)  # New router
 
 # Allow frontend requests (CORS)
 app.add_middleware(
@@ -65,6 +66,8 @@ async def query_data(filters: Optional[QueryFilters]):
         return JSONResponse(content=df.to_dict(orient="records"))
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
+
+# Example request body for /query endpoint:
 # {
 #   "year": 2025,
 #   "month": null,

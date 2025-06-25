@@ -1,3 +1,11 @@
+CREATE TABLE pages (
+    page_id TEXT PRIMARY KEY,
+    page_name TEXT NOT NULL,
+    page_route TEXT NOT NULL,
+    user_name TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+)
 
 -- 2. Master Model
 CREATE TABLE master_model (
