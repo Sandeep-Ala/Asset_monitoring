@@ -1,9 +1,11 @@
 // router/routes.js (Complete with your existing routes)
 
+
 import MainLayout from 'layouts/MainLayout.vue'
 import IndexPage from 'pages/IndexPage.vue'
 import DynamicPage from 'pages/DynamicPage.vue'
 import DataSourcePage from 'pages/DataSourcePage.vue'
+import MetadataMappingPage from 'pages/MetadataMappingPage.vue'
 
 const routes = [
   {
@@ -26,6 +28,16 @@ const routes = [
           title: 'Data Sources',
           icon: 'storage',
           description: 'Manage database connections and schema discovery'
+        }
+      },
+      {
+        path: 'metadata-mapping',
+        name: 'MetadataMapping',
+        component: MetadataMappingPage,
+        meta: {
+          title: 'Metadata Mapping',
+          icon: 'drag_indicator',
+          description: 'Drag and drop tables/columns to create metadata'
         }
       },
       {
@@ -62,6 +74,12 @@ export const navigationItems = [
     icon: 'storage',
     route: '/datasources',
     description: 'Manage database connections and schema discovery'
+  },
+  {
+    title: 'Metadata Mapping',
+    icon: 'drag_indicator',
+    route: '/metadata-mapping',
+    description: 'Drag and drop tables/columns to create metadata'
   },
   {
     title: 'Dynamic Pages',
