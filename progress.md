@@ -1,339 +1,334 @@
-Complete Development Plan & Status Report - Updated
-Project Overview: Metadata Management System for Time-Series Data
-System Architecture:
+# Complete Development Plan & Current Status Report - Final Version
 
-Backend: FastAPI (Python) with SQLite3 MetaDB
-Frontend: Vue3 + Quasar 2 Framework
-Database: SQLite3 for metadata, supports multiple data sources (SQLite3, InfluxDB, Parquet)
-Purpose: Create metadata mappings from time-series databases for equipment monitoring
+## Project Overview: Metadata Management System for Time-Series Data
 
+**System Architecture:**
+- Backend: FastAPI (Python) with SQLite3 MetaDB
+- Frontend: Vue3 + Quasar 2 Framework
+- Database: SQLite3 for metadata, supports multiple data sources (SQLite3, InfluxDB, Parquet)
+- Purpose: Create metadata mappings from time-series databases for equipment monitoring
 
-Complete Development Phases
-✅ PHASE 1: COMPLETED - Database Connection Management
-Phase 1.1: Backend Connection Management ✅
-Files Created:
+---
 
-models/datasource_models.py - Database models for connections
-services/datasource_crud.py - CRUD operations
-services/connection_service.py - Connection testing logic
-services/datasource_routes.py - FastAPI routes
-Updated config.py - Added new model imports
-Updated main.py - Added datasource router
+## Complete Development Phases Status
 
-Features:
+### ✅ PHASE 1: COMPLETED - Database Connection Management
 
-Dynamic connection forms based on DB type
-Connection testing with real-time feedback
-Configuration storage in MetaDB
-Support for SQLite3 (implemented), InfluxDB/Parquet (placeholders)
+#### Phase 1.1: Backend Connection Management ✅
+**Files Created/Updated:**
+- `models/datasource_models.py` - Database models for connections
+- `services/datasource_crud.py` - CRUD operations for connections
+- `services/connection_service.py` - Connection testing logic
+- `services/datasource_routes.py` - FastAPI routes for data sources
+- `config.py` - Updated with new model imports
+- `main.py` - Updated with datasource router
 
-Phase 1.2: Schema Discovery APIs ✅
-Files Created:
+**Features Implemented:**
+- Dynamic connection forms based on DB type
+- Connection testing with real-time feedback
+- Configuration storage in MetaDB
+- Support for SQLite3 (implemented), InfluxDB/Parquet (placeholders)
 
-services/schema_discovery_service.py - Schema analysis service
+#### Phase 1.2: Schema Discovery APIs ✅
+**Files Created:**
+- `services/schema_discovery_service.py` - Schema analysis service
 
-Features:
+**Features Implemented:**
+- SQLite3 table/column discovery with metadata
+- Intelligent column categorization (timestamp, numeric, categorical, etc.)
+- Usage suggestions for drag-drop UI
+- Performance optimization for large databases (quick mode)
+- Complete schema retrieval with statistics
 
-SQLite3 table/column discovery with metadata
-Intelligent column categorization (timestamp, numeric, categorical, etc.)
-Usage suggestions for drag-drop UI
-Performance optimization for large databases (quick mode)
-Complete schema retrieval with statistics
+#### Phase 1.3: Frontend Connection Management ✅
+**Files Created/Updated:**
+- `services/api.js` - Axios service layer for all API calls
+- `pages/DataSourcePage.vue` - Main data source management page
+- `components/DataSourceManager.vue` - Connection management component
+- `components/ConnectionForm.vue` - Dynamic connection form
+- `components/ConnectionList.vue` - Connection list/table component
+- `router/routes.js` - Updated with /datasources route
 
-Phase 1.3: Frontend Connection Management ✅
-Files Created:
+**Features Implemented:**
+- Dynamic forms that change based on database type
+- Real-time connection testing with visual feedback
+- Schema discovery with table/column visualization
+- Responsive design for desktop/mobile
+- Connection CRUD operations
 
-services/api.js - Axios service layer for all API calls
-pages/DataSourcePage.vue - Main data source management page
-components/DataSourceManager.vue - Connection management component
-components/ConnectionForm.vue - Dynamic connection form
-components/ConnectionList.vue - Connection list/table component
-Updated router/routes.js - Added /datasources route
+---
 
-Features:
+### ✅ PHASE 2: COMPLETED - Advanced Drag & Drop Metadata Mapping
 
-Dynamic forms that change based on database type
-Real-time connection testing with visual feedback
-Schema discovery with table/column visualization
-Responsive design for desktop/mobile
-Connection CRUD operations
+#### Phase 2.1: Basic Drag & Drop Interface ✅
+**Files Created:**
+- `pages/MetadataMappingPage.vue` - Main orchestrator page
+- `components/SourcePanel.vue` - Tables/columns with drag functionality
+- `components/TargetPanel.vue` - Drop zones with smart validation
+- `router/routes.js` - Updated with /metadata-mapping route
 
-✅ PHASE 2: COMPLETED - Advanced Drag & Drop Metadata Mapping
-Phase 2.1: Basic Drag & Drop Interface ✅
-Files Created:
+**Features Implemented:**
+- Drag tables → Equipment zone (auto-creates master model)
+- Drag columns → Filters & Multi-Tab zones
+- Equipment auto-naming (bms-1, bms-2, etc.)
+- Basic validation and bulk save to MetaDB
 
-pages/MetadataMappingPage.vue - Main orchestrator page
-components/SourcePanel.vue - Tables/columns with drag functionality
-components/TargetPanel.vue - Drop zones with smart validation
-Updated router/routes.js - Added /metadata-mapping route
+#### Phase 2.2: Save Functionality & Database Integration ✅
+**Features Completed:**
+- Complete MetaDB integration
+- Master model → Equipment → Filters/Signals/Specs relationships
+- Bulk save with validation
+- Error handling and debugging
 
-Basic Features:
+#### Phase 2.3: Enhanced Features ✅
+**Files Modified:**
+- `components/SourcePanel.vue` - Added multi-select functionality
+- `components/TargetPanel.vue` - Enhanced with dialogs and editing
+- `pages/MetadataMappingPage.vue` - Enhanced event handling
 
-Drag tables → Equipment zone (auto-creates master model)
-Drag columns → Filters & Multi-Tab zones
-Equipment auto-naming (bms-1, bms-2, etc.)
-Basic validation and bulk save to MetaDB
+**Advanced Features Implemented:**
+- Multi-select Drag & Drop with checkbox selection
+- Enhanced Filter Management with manual values
+- Equipment Location Field (optional)
+- Signal Units with measurement units
 
-Phase 2.2: Save Functionality & Database Integration ✅
-Features Completed:
+#### Phase 2.4: Manual Filter Bug Fix ✅
+**Status:** COMPLETED
+**Files Fixed:**
+- `components/TargetPanel.vue` - Fixed event emission
+- `pages/MetadataMappingPage.vue` - Fixed event listeners
 
-Complete MetaDB integration
-Master model → Equipment → Filters/Signals/Specs relationships
-Bulk save with validation
-Error handling and debugging
+**Issues Resolved:**
+- Manual filter creation working correctly
+- Event handling between components fixed
+- Validation and user feedback improved
 
-Phase 2.3: Enhanced Features ✅
-Files Modified:
+#### Phase 2.5: Manual Multi-Tab Data Entry ✅
+**Status:** COMPLETED
+**Files Enhanced:**
+- `components/TargetPanel.vue` - Added manual spec/doc dialogs
+- `pages/MetadataMappingPage.vue` - Added manual spec/doc handlers
 
-components/SourcePanel.vue - Added multi-select functionality
-components/TargetPanel.vue - Enhanced with dialogs and editing
-pages/MetadataMappingPage.vue - Enhanced event handling
+**Features Implemented:**
+- Manual Specifications: key, value, desc, unit, equipment linking
+- Manual Documents: path, desc, equipment linking
+- Edit functionality for manual entries
+- Visual distinction between manual vs dragged entries
 
-Advanced Features Implemented:
+#### Phase 2.6: Signal Value Field Enhancement ✅
+**Status:** COMPLETED
+**Files Enhanced:**
+- `components/TargetPanel.vue` - Enhanced signal dialog with value field
+- `pages/MetadataMappingPage.vue` - Updated signal handling
 
-Multi-select Drag & Drop:
+**Features Implemented:**
+- Signal Value field (optional - defaults to signal name if empty)
+- Signal Unit field (optional)
+- Complete `equipment_signals` table population
+- Enhanced UI display showing both value and unit
 
-Checkbox selection for multiple columns
-"Select All" functionality
-Bulk drag operations with visual feedback
+---
 
+## 🔄 CURRENT STATUS: Phase 2.6 Complete - All Core Functionality Working
 
-Enhanced Filter Management:
+### What's Working ✅:
+1. **Connection Management** - Create, test, manage database connections
+2. **Schema Discovery** - Discover tables/columns with intelligent analysis
+3. **Basic Drag & Drop** - Tables to equipment, columns to filters/multi-tab
+4. **Multi-select Operations** - Select and drag multiple columns
+5. **Filter Enhancement** - Manual values, equipment linking, column-based filters
+6. **Equipment Location** - Add/edit location during equipment management
+7. **Signal Enhancement** - Value field (optional) + unit field for complete metadata
+8. **Manual Multi-Tab** - Manual specifications and documents with equipment linking
+9. **Save Functionality** - All metadata saves to MetaDB correctly with complete relationships
 
-Manual filter values with equipment linking
-Same column can link to different equipment
-Manual filter creation (custom filters not from columns)
-Filter editing capabilities
+### Database Schema Fully Supported:
+```sql
+-- All tables properly populated:
+master_model ✅ - auto-created from first table
+equipments ✅ - with name, location, model_id  
+equipment_filters ✅ - with filter_key, filter_value, eqp_id
+equipment_specs ✅ - with key, value, desc, unit, eqp_id (manual + dragged)
+equipment_signals ✅ - with key, value, unit, desc, eqp_id (value optional, defaults to key)
+equipment_doc ✅ - with path, desc, eqp_id (manual + dragged)
+```
 
+### Available Routes:
+- `http://localhost:9000/datasources` - Data source management
+- `http://localhost:9000/metadata-mapping` - Complete drag & drop metadata mapping
 
-Equipment Location Field:
+---
 
-Location input during equipment creation/editing
-Optional field stored in equipments.location
+## 🚧 PENDING PHASES (Future Development)
 
+### Phase 3.1: InfluxDB Implementation
+**Priority:** Medium
+**Estimated Time:** 2-3 hours
 
-Signal Units:
+**Files to Modify:**
+- `services/schema_discovery_service.py` - Implement InfluxDB methods
+- `services/connection_service.py` - Add InfluxDB connection testing
 
-Unit input dialog for signals
-Optional measurement units (V, A, °C, %)
-Stored in equipment_signals.unit
+**Tasks:**
+- Implement InfluxDB connection testing using influxdb-client library
+- Add measurements discovery (equivalent to tables)
+- Add tags (filters) and fields (signals) discovery
+- Update frontend to handle InfluxDB-specific terminology
+- Test with InfluxDB 2.x instances
 
+### Phase 3.2: Parquet Implementation  
+**Priority:** Medium
+**Estimated Time:** 2-3 hours
 
+**Files to Modify:**
+- `services/schema_discovery_service.py` - Implement Parquet methods
+- `services/connection_service.py` - Add Parquet connection testing
 
+**Tasks:**
+- Implement directory scanning for parquet files
+- Extract schema from parquet files using pandas/pyarrow
+- Handle partitioned structure (site/year/month/equipment/day)
+- Map parquet files to equipment structure
+- Support both single files and directory structures
 
-🔄 CURRENT STATUS: Phase 2.3 Complete with Minor Bug
-What's Working ✅:
+### Phase 4.1: Advanced UI Enhancements
+**Priority:** Low
+**Estimated Time:** 3-4 hours
 
-Connection Management - Create, test, manage database connections
-Schema Discovery - Discover tables/columns with intelligent analysis
-Basic Drag & Drop - Tables to equipment, columns to filters/multi-tab
-Multi-select Operations - Select and drag multiple columns
-Filter Enhancement - Manual values, equipment linking, column-based filters
-Equipment Location - Add/edit location during equipment management
-Signal Units - Add measurement units to signals
-Save Functionality - All metadata saves to MetaDB correctly
+**Files to Enhance:**
+- `components/MetadataMappingPage.vue` - Add advanced features
+- `components/TargetPanel.vue` - Enhanced validation
+- `components/SourcePanel.vue` - Better filtering
 
-Current Issue 🐛:
-Manual Filter Creation - Has debugging code added but needs final troubleshooting
+**Tasks:**
+- Enhanced validation and error handling
+- Metadata templates and presets
+- Import/export metadata configurations
+- Advanced bulk operations
+- Undo/redo functionality
 
-Console logging added for debugging
-Event emission verified
-Validation enhanced
-Status: 95% complete, needs final debug session
+### Phase 4.2: Query Builder Integration
+**Priority:** Future
+**Estimated Time:** 5-6 hours
 
-Routes Available:
+**Files to Create:**
+- `components/QueryBuilder.vue` - Dynamic query building
+- `services/query_service.py` - Query generation logic
 
-http://localhost:9000/datasources - Data source management
-http://localhost:9000/metadata-mapping - Enhanced drag & drop metadata mapping
+**Tasks:**
+- Use saved metadata for dynamic query building
+- Implement GROUP BY operations using filter columns
+- Create equipment-specific data queries
+- Integration with existing query system
 
+---
 
-🚧 PENDING PHASES
-Phase 2.4: Manual Filter Bug Fix
-Status: In Progress (debugging added, needs completion)
-Tasks:
+## 📁 Complete File Structure & Status
 
-Complete manual filter functionality debugging
-Ensure all filter types work correctly
-Test edge cases and validation
-
-Phase 3.1: InfluxDB Implementation
-Priority: Medium
-Files to Modify:
-
-services/schema_discovery_service.py - Implement InfluxDB methods
-services/connection_service.py - Add InfluxDB connection testing
-
-Tasks:
-
-Implement InfluxDB connection testing
-Add measurements discovery (equivalent to tables)
-Add tags (filters) and fields (signals) discovery
-Update frontend to handle InfluxDB-specific terminology
-
-Phase 3.2: Parquet Implementation
-Priority: Medium
-Files to Modify:
-
-services/schema_discovery_service.py - Implement Parquet methods
-services/connection_service.py - Add Parquet connection testing
-
-Tasks:
-
-Implement directory scanning for parquet files
-Extract schema from parquet files
-Handle partitioned structure (site/year/month/equipment/day)
-Map parquet files to equipment structure
-
-Phase 4.1: Advanced UI Enhancements
-Priority: Low
-Tasks:
-
-Enhanced validation and error handling
-Metadata templates and presets
-Import/export metadata configurations
-Advanced bulk operations
-
-Phase 4.2: Query Builder Integration
-Priority: Future
-Tasks:
-
-Use saved metadata for dynamic query building
-Implement GROUP BY operations using filter columns
-Create equipment-specific data queries
-Integration with existing query system
-
-
-📁 Complete File Structure
-Backend Files:
+### Backend Files:
+```
 services/
-├── duckdb_service.py (existing)
-├── meta_crud.py (existing)
-├── meta_routes.py (existing)
-├── page_crud.py (existing)
-├── page_routes.py (existing)
+├── duckdb_service.py ✅ (existing - no changes needed)
+├── meta_crud.py ✅ (existing - working)
+├── meta_routes.py ✅ (existing - working)
+├── page_crud.py ✅ (existing - working)
+├── page_routes.py ✅ (existing - working)
 ├── datasource_crud.py ✅ COMPLETE
 ├── datasource_routes.py ✅ COMPLETE
 ├── connection_service.py ✅ COMPLETE
 └── schema_discovery_service.py ✅ COMPLETE
 
 models/
-├── filters.py (existing)
-├── meta_models.py (existing)
+├── filters.py ✅ (existing - working)
+├── meta_models.py ✅ (existing - working)
 └── datasource_models.py ✅ COMPLETE
 
-config.py ✅ UPDATED
-main.py ✅ UPDATED
-Frontend Files:
+config.py ✅ UPDATED & WORKING
+main.py ✅ UPDATED & WORKING
+```
+
+### Frontend Files:
+```
 src/
 ├── services/
 │   └── api.js ✅ COMPLETE
 ├── pages/
 │   ├── DataSourcePage.vue ✅ COMPLETE
-│   └── MetadataMappingPage.vue ✅ COMPLETE (with debugging)
+│   └── MetadataMappingPage.vue ✅ COMPLETE (Version 3 with signal value)
 ├── components/
 │   ├── DataSourceManager.vue ✅ COMPLETE
 │   ├── ConnectionForm.vue ✅ COMPLETE
 │   ├── ConnectionList.vue ✅ COMPLETE
 │   ├── SourcePanel.vue ✅ COMPLETE (with multi-select)
-│   └── TargetPanel.vue ✅ COMPLETE (with dialogs, needs minor debug)
+│   └── TargetPanel.vue ✅ COMPLETE (with manual entries + signal value)
 └── router/
-    └── routes.js ✅ UPDATED
+    └── routes.js ✅ UPDATED & WORKING
+```
 
-🎯 Enhanced Features Implemented
-Multi-select Drag & Drop:
+---
 
-Checkbox selection system
-"Drag Selected" button for bulk operations
-Visual feedback for selected items
-Bulk operations for Signals/Specs/Docs
+## 🎯 Current Capabilities Summary
 
-Advanced Filter Management:
-javascript// Filter structure now supports:
-{
-  id: timestamp,
-  filter_key: "n_bank" | "custom_filter",
-  filter_value: "1" | "active", // User-specified values
-  eqp_id: equipment_id, // Links to specific equipment
-  source_table: "t_bms" | null, // null for manual filters
-  source_column: "n_bank" | null,
-  data_type: "INTEGER" | "manual",
-  isNew: true,
-  isManual: false | true // Distinguishes manual vs column-based
-}
-Enhanced Equipment:
-javascript// Equipment now includes location:
-{
-  id: timestamp,
-  name: "bms-1",
-  source_table: "t_bms",
-  location: "Building A, Floor 2", // NEW - optional field
-  model_id: null,
-  enable: 1,
-  isNew: true
-}
-Enhanced Signals:
-javascript// Signals now include units:
-{
-  id: timestamp,
-  key: "voltage_reading",
-  value: "voltage_reading",
-  unit: "V", // NEW - measurement unit
-  desc: "Signal from voltage_reading",
-  source_table: "t_bms",
-  source_column: "voltage_reading",
-  data_type: "REAL",
-  enable: 1,
-  isNew: true
-}
+### ✅ Complete SQLite3 Integration:
+- Connection management with real-time testing
+- Schema discovery with intelligent categorization
+- Complete drag & drop metadata mapping
+- Manual entry for all metadata types
+- Multi-select operations
+- Equipment location management
+- Signal value/unit specification
+- Complete database relationships
+- Bulk save with validation
 
-🔧 Development Environment Setup
-Backend Dependencies:
+### ✅ Enhanced Features:
+- Multi-select drag & drop for bulk operations
+- Manual filter creation with equipment linking
+- Manual specifications with key/value/desc/unit
+- Manual documents with path/desc
+- Equipment location field
+- Signal value field (optional, defaults to signal name)
+- Visual distinction between manual vs dragged entries
+- Edit functionality for manual entries
+- Comprehensive validation and error handling
 
-FastAPI, SQLAlchemy, DuckDB, SQLite3
-All connection/schema discovery services implemented
-Enhanced MetaDB CRUD with new fields
+### ❌ Not Yet Implemented:
+- InfluxDB data source support
+- Parquet data source support
+- Advanced UI features (templates, import/export)
+- Query builder integration
 
-Frontend Dependencies:
+---
 
-Vue3, Quasar 2, Axios
-All UI components with advanced features implemented
-Multi-select, dialogs, and enhanced validation
+## 🚀 Next Developer Instructions
 
-Current Capabilities:
+### Immediate Next Steps (if continuing development):
 
-✅ Complete SQLite3 integration
-✅ Advanced drag & drop with multi-select
-✅ Equipment location management
-✅ Signal units specification
-✅ Enhanced filter management (95% complete)
-🔄 Manual filter creation (debugging in progress)
-❌ InfluxDB/Parquet discovery (placeholders exist)
+1. **If implementing InfluxDB (Phase 3.1):**
+   - Install influxdb-client: `pip install influxdb-client`
+   - Modify `services/connection_service.py` to add InfluxDB testing
+   - Implement measurements and fields discovery in `schema_discovery_service.py`
+   - Update frontend to handle InfluxDB terminology
 
+2. **If implementing Parquet (Phase 3.2):**
+   - Install pyarrow: `pip install pyarrow`
+   - Implement directory scanning in `schema_discovery_service.py`
+   - Add parquet schema extraction
+   - Handle partitioned directory structures
 
-🚀 Next Developer Instructions
-Immediate Priority (Phase 2.4):
-Complete Manual Filter Bug Fix:
+3. **If enhancing UI (Phase 4.1):**
+   - Add metadata templates functionality
+   - Implement import/export features
+   - Enhanced validation and error handling
+   - Undo/redo functionality
 
-Test manual filter creation with debugging console logs
-Check browser console for detailed debug output
-Verify event emission and reception
-Fix any remaining validation or data flow issues
+### Testing Current System:
+1. Start backend: `uvicorn main:app --reload --port 8000`
+2. Start frontend: `quasar dev --port 9000`
+3. Test data source connections at `/datasources`
+4. Test metadata mapping at `/metadata-mapping`
+5. Verify database saves in MetaDB.sqlite3
 
-Debug Process:
+### Key Achievement:
+**Complete drag & drop metadata creation system with multi-select, manual entries, equipment linking, signal value/unit support, and full MetaDB integration for SQLite3 data sources!** 🎉
 
-Open browser console (F12)
-Create equipment first (drag table to equipment zone)
-Click "Add Manual Filter"
-Fill form and click "Add"
-Check console logs for debugging information
-Report any missing logs or error messages
-
-After Manual Filter Fix:
-
-System will be 100% complete for SQLite3 data sources
-Move to Phase 3.1 (InfluxDB) or Phase 3.2 (Parquet) as needed
-All core functionality is working and tested
-
-
-The system is at 95% completion with comprehensive metadata management capabilities. The next developer should focus on completing the manual filter debugging and then implementing additional data source types as needed.
-Key Achievement: Complete drag & drop metadata creation system with multi-select, equipment linking, custom values, and full MetaDB integration! 🎉
+**Current Status: 95% Complete for SQLite3 data sources. Ready for production use or extension to other data source types.**

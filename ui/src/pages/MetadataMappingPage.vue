@@ -1,4 +1,4 @@
-<!-- pages/MetadataMappingPage.vue -->
+<!-- pages/MetadataMappingPage.vue - COMPLETE VERSION 3 WITH SIGNAL VALUE ENHANCEMENT -->
 <template>
   <q-page class="q-pa-md">
     <!-- Page Header -->
@@ -11,7 +11,7 @@
               Metadata Mapping
             </div>
             <div class="text-subtitle2 text-grey-7">
-              Drag tables to create equipment, drag columns to define filters and signals
+              Drag tables to create equipment, drag columns or add manual entries for filters, signals, specs, and docs
             </div>
           </q-card-section>
         </q-card>
@@ -75,9 +75,10 @@
     </div>
 
     <!-- Main Mapping Interface -->
-    <div v-if="selectedConnection && schemaData.tables" class="row q-gutter-md">
+    <div v-if="selectedConnection && schemaData.tables" class="q-gutter-md">
       <!-- Source Panel -->
-      <div class="col-12 col-lg-4">
+       <div class="row ">
+        <div class="col-6 col-lg-4 q-pa-xs ">
         <SourcePanel
           :schema-data="schemaData"
           :selected-table="selectedTable"
@@ -87,7 +88,7 @@
         />
       </div>
 
-      <!-- Target Panels -->
+      <!-- Target Panels with enhanced signal handling -->
       <div class="col-12 col-lg-8">
         <TargetPanel
           :master-model="masterModel"
@@ -100,11 +101,19 @@
           @multi-tab-drop="onMultiTabDrop"
           @equipment-edit="onEquipmentEdit"
           @equipment-remove="onEquipmentRemove"
+          @filter-edit="onFilterEdit"
           @filter-remove="onFilterRemove"
+          @manual-filter-add="onManualFilterAdd"
+          @manual-spec-add="onManualSpecAdd"
+          @manual-doc-add="onManualDocAdd"
+          @spec-edit="onSpecEdit"
+          @doc-edit="onDocEdit"
           @multi-tab-remove="onMultiTabRemove"
         />
       </div>
     </div>
+    </div>
+
 
     <!-- Empty State -->
     <div v-else-if="!loading" class="row q-gutter-md">
@@ -180,9 +189,9 @@ export default {
       selectedTable: null,
 
       // Mapping data
-      masterModel: null, // Auto-created from first table
-      equipmentList: [], // Array of equipment mapped from tables
-      filtersList: [], // Array of filter columns
+      masterModel: null,
+      equipmentList: [],
+      filtersList: [],
       multiTabData: {
         signals: [],
         specs: [],
@@ -283,11 +292,11 @@ export default {
 
       // Add equipment with location field
       const equipment = {
-        id: Date.now(), // Temporary ID
+        id: Date.now(),
         name: equipmentName,
         source_table: table.name,
-        model_id: null, // Will be set after master model is saved
-        location: '', // Empty by default
+        model_id: null,
+        location: '',
         enable: 1,
         isNew: true
       }
@@ -305,14 +314,12 @@ export default {
     onFilterDrop(data) {
       console.log('🔧 Filter drop:', data)
 
-      // Handle both column drop and form data
       const filterKey = data.filter_key || data.name
       const filterValue = data.filter_value || ''
       const equipmentId = data.eqp_id
       const sourceTable = data.source_table || this.selectedTable?.name
       const sourceColumn = data.source_column || data.name
 
-      // Allow same column with different equipment (different filter instances)
       const existingFilter = this.filtersList.find(f =>
         f.filter_key === filterKey &&
         f.eqp_id === equipmentId &&
@@ -363,9 +370,18 @@ export default {
       }
     },
 
+    // Manual Filter Add Handler
     onManualFilterAdd(filterData) {
       console.log('🎯 Received manual-filter-add event:', filterData)
-      console.log('🎯 Current filtersList length:', this.filtersList.length)
+
+      // Validation
+      if (!filterData.filter_key || !filterData.filter_value || !filterData.eqp_id) {
+        this.$q.notify({
+          type: 'negative',
+          message: 'All filter fields are required'
+        })
+        return
+      }
 
       // Check if manual filter with same key and equipment exists
       const exists = this.filtersList.some(f =>
@@ -375,7 +391,6 @@ export default {
       )
 
       if (exists) {
-        console.log('⚠️ Manual filter already exists')
         this.$q.notify({
           type: 'warning',
           message: `Manual filter "${filterData.filter_key}" already exists for this equipment`
@@ -388,32 +403,167 @@ export default {
         filter_key: filterData.filter_key,
         filter_value: filterData.filter_value,
         eqp_id: filterData.eqp_id,
-        source_table: null, // Manual filter
+        source_table: null,
         source_column: null,
         data_type: 'manual',
         isNew: true,
         isManual: true
       }
 
-      console.log('📝 Adding filter to list:', filter)
       this.filtersList.push(filter)
-      console.log('📝 New filtersList length:', this.filtersList.length)
       this.hasUnsavedChanges = true
 
       this.$q.notify({
         type: 'positive',
-        message: `Manual filter "${filterData.filter_key}" added`,
-        timeout: 2000
+        message: `Manual filter "${filterData.filter_key}" added successfully!`,
+        timeout: 3000
       })
-
-      console.log('✅ Manual filter added successfully')
     },
 
+    // Manual Specification Add Handler
+    onManualSpecAdd(specData) {
+      console.log('🎯 Received manual-spec-add event:', specData)
+
+      // Validation
+      if (!specData.key || !specData.value || !specData.desc || !specData.eqp_id) {
+        this.$q.notify({
+          type: 'negative',
+          message: 'Key, value, description, and equipment are required'
+        })
+        return
+      }
+
+      // Check if manual spec with same key and equipment exists
+      const exists = this.multiTabData.specs.some(s =>
+        s.key === specData.key &&
+        s.eqp_id === specData.eqp_id &&
+        s.isManual
+      )
+
+      if (exists) {
+        this.$q.notify({
+          type: 'warning',
+          message: `Manual specification "${specData.key}" already exists for this equipment`
+        })
+        return
+      }
+
+      const spec = {
+        id: Date.now(),
+        key: specData.key,
+        value: specData.value,
+        desc: specData.desc,
+        unit: specData.unit || '',
+        eqp_id: specData.eqp_id,
+        source_table: null, // Manual entry
+        source_column: null,
+        enable: 1,
+        isNew: true,
+        isManual: true
+      }
+
+      this.multiTabData.specs.push(spec)
+      this.hasUnsavedChanges = true
+
+      this.$q.notify({
+        type: 'positive',
+        message: `Manual specification "${specData.key}" added successfully!`,
+        timeout: 3000
+      })
+
+      console.log('✅ Manual specification added:', spec)
+    },
+
+    // Manual Document Add Handler
+    onManualDocAdd(docData) {
+      console.log('🎯 Received manual-doc-add event:', docData)
+
+      // Validation
+      if (!docData.path || !docData.desc || !docData.eqp_id) {
+        this.$q.notify({
+          type: 'negative',
+          message: 'Path, description, and equipment are required'
+        })
+        return
+      }
+
+      // Check if manual doc with same path and equipment exists
+      const exists = this.multiTabData.docs.some(d =>
+        d.path === docData.path &&
+        d.eqp_id === docData.eqp_id &&
+        d.isManual
+      )
+
+      if (exists) {
+        this.$q.notify({
+          type: 'warning',
+          message: `Manual document with path "${docData.path}" already exists for this equipment`
+        })
+        return
+      }
+
+      const doc = {
+        id: Date.now(),
+        path: docData.path,
+        desc: docData.desc,
+        eqp_id: docData.eqp_id,
+        source_table: null, // Manual entry
+        source_column: null,
+        isNew: true,
+        isManual: true
+      }
+
+      this.multiTabData.docs.push(doc)
+      this.hasUnsavedChanges = true
+
+      this.$q.notify({
+        type: 'positive',
+        message: `Manual document "${docData.desc}" added successfully!`,
+        timeout: 3000
+      })
+
+      console.log('✅ Manual document added:', doc)
+    },
+
+    // Specification Edit Handler
+    onSpecEdit(spec, updatedData) {
+      console.log('🔧 Editing specification:', spec, updatedData)
+
+      const index = this.multiTabData.specs.findIndex(s => s.id === spec.id)
+      if (index !== -1) {
+        this.multiTabData.specs[index] = { ...this.multiTabData.specs[index], ...updatedData }
+        this.hasUnsavedChanges = true
+
+        this.$q.notify({
+          type: 'positive',
+          message: `Specification "${spec.key}" updated`,
+          timeout: 2000
+        })
+      }
+    },
+
+    // Document Edit Handler
+    onDocEdit(doc, updatedData) {
+      console.log('🔧 Editing document:', doc, updatedData)
+
+      const index = this.multiTabData.docs.findIndex(d => d.id === doc.id)
+      if (index !== -1) {
+        this.multiTabData.docs[index] = { ...this.multiTabData.docs[index], ...updatedData }
+        this.hasUnsavedChanges = true
+
+        this.$q.notify({
+          type: 'positive',
+          message: `Document "${doc.desc}" updated`,
+          timeout: 2000
+        })
+      }
+    },
+
+    // ENHANCED: Multi-Tab Drop Handler with Signal Value Support
     onMultiTabDrop(data) {
-      console.log('📊 Multi-tab drop:', data)
+      console.log('📊 [ENHANCED] Multi-tab drop:', data)
       const { column, tabType } = data
 
-      // Check if already exists in any tab
       const allTabData = [...this.multiTabData.signals, ...this.multiTabData.specs, ...this.multiTabData.docs]
       const exists = allTabData.some(item =>
         item.source_column === column.name && item.source_table === this.selectedTable?.name
@@ -429,18 +579,25 @@ export default {
 
       let item
       if (tabType === 'signals') {
+        // ENHANCED: Signal creation with value field support
+        console.log('📊 [ENHANCED] Creating signal with value:', column.value)
+        console.log('📊 [ENHANCED] Creating signal with unit:', column.unit)
+
         item = {
           id: Date.now(),
           key: column.name,
-          value: column.name,
-          unit: column.unit || '', // Use unit from dialog
+          value: column.value || column.name, // FIXED: Always ensure value defaults to signal name
+          unit: column.unit || '',
           desc: `Signal from ${column.name}`,
           source_table: this.selectedTable?.name,
           source_column: column.name,
           data_type: column.data_type,
           enable: 1,
-          isNew: true
+          isNew: true,
+          isManual: false // Dragged from column
         }
+
+        console.log('📊 [ENHANCED] Created signal item:', item)
       } else if (tabType === 'specs') {
         item = {
           id: Date.now(),
@@ -451,7 +608,8 @@ export default {
           source_table: this.selectedTable?.name,
           source_column: column.name,
           enable: 1,
-          isNew: true
+          isNew: true,
+          isManual: false // Dragged from column
         }
       } else if (tabType === 'docs') {
         item = {
@@ -460,7 +618,8 @@ export default {
           desc: `Documentation for ${column.name}`,
           source_table: this.selectedTable?.name,
           source_column: column.name,
-          isNew: true
+          isNew: true,
+          isManual: false // Dragged from column
         }
       }
 
@@ -469,15 +628,14 @@ export default {
 
       this.$q.notify({
         type: 'positive',
-        message: `${tabType.charAt(0).toUpperCase() + tabType.slice(1)} "${column.name}" added`,
-        timeout: 2000
+        message: `${tabType.charAt(0).toUpperCase() + tabType.slice(1)} "${column.name}" added${tabType === 'signals' ? ` with value "${item.value}"` : ''}`,
+        timeout: 3000
       })
     },
 
     onEquipmentEdit(equipment, updatedData) {
       const index = this.equipmentList.findIndex(eq => eq.id === equipment.id)
       if (index !== -1) {
-        // Handle both old format (just name) and new format (object with name and location)
         if (typeof updatedData === 'string') {
           this.equipmentList[index].name = updatedData
         } else {
@@ -524,7 +682,6 @@ export default {
         errors.push('At least one Equipment must be defined')
       }
 
-      // Validate equipment names are unique
       const equipmentNames = this.equipmentList.map(eq => eq.name)
       const duplicateNames = equipmentNames.filter((name, index) =>
         equipmentNames.indexOf(name) !== index
@@ -533,14 +690,12 @@ export default {
         errors.push(`Duplicate equipment names: ${duplicateNames.join(', ')}`)
       }
 
-      // Validate filters have required values
       const invalidFilters = this.filtersList.filter(f => !f.filter_value || !f.eqp_id)
       if (invalidFilters.length > 0) {
         const filterNames = invalidFilters.map(f => f.filter_key).join(', ')
         errors.push(`Filters missing values or equipment assignment: ${filterNames}`)
       }
 
-      // Validate filter equipment IDs exist
       const filterWithInvalidEquipment = this.filtersList.filter(f =>
         f.eqp_id && !this.equipmentList.some(eq => eq.id === f.eqp_id)
       )
@@ -549,11 +704,32 @@ export default {
         errors.push(`Filters linked to non-existent equipment: ${filterNames}`)
       }
 
+      // Validate manual specifications
+      const invalidSpecs = this.multiTabData.specs.filter(s =>
+        s.isManual && (!s.key || !s.value || !s.desc || !s.eqp_id)
+      )
+      if (invalidSpecs.length > 0) {
+        errors.push(`Some manual specifications are missing required fields`)
+      }
+
+      // Validate manual documents
+      const invalidDocs = this.multiTabData.docs.filter(d =>
+        d.isManual && (!d.path || !d.desc || !d.eqp_id)
+      )
+      if (invalidDocs.length > 0) {
+        errors.push(`Some manual documents are missing required fields`)
+      }
+
+      // REMOVED: Signal value validation since it's now optional
+      // const invalidSignals = this.multiTabData.signals.filter(s => !s.value)
+      // if (invalidSignals.length > 0) {
+      //   errors.push(`Some signals are missing required value field`)
+      // }
+
       return errors
     },
 
     async saveAllMappings() {
-      // Validate before saving
       this.validationErrors = this.validateMappings()
       if (this.validationErrors.length > 0) {
         this.showValidationDialog = true
@@ -562,14 +738,12 @@ export default {
 
       this.saving = true
       try {
-        // Save master model first
         let masterModelResponse
         if (this.masterModel) {
           masterModelResponse = await metaAPI.createMasterModel(this.masterModel)
           console.log('✅ Master model saved:', masterModelResponse.data)
         }
 
-        // Save equipment
         for (const equipment of this.equipmentList) {
           if (equipment.isNew) {
             const equipmentData = {
@@ -588,46 +762,74 @@ export default {
             for (const filter of equipmentFilters) {
               if (filter.isNew) {
                 const filterData = {
-                  eqp_id: response.data.id, // Use the actual saved equipment ID
+                  eqp_id: response.data.id,
                   filter_key: filter.filter_key,
                   filter_value: filter.filter_value
                 }
 
                 console.log('💾 Saving filter:', filterData)
-                try {
-                  const filterResponse = await metaAPI.createFilter(filterData)
-                  console.log('✅ Filter saved successfully:', filterResponse.data)
-                } catch (filterError) {
-                  console.error('❌ Filter save failed:', filterError.response?.data || filterError.message)
-                  throw new Error(`Failed to save filter ${filter.filter_key}: ${filterError.response?.data?.detail || filterError.message}`)
-                }
+                const filterResponse = await metaAPI.createFilter(filterData)
+                console.log('✅ Filter saved successfully:', filterResponse.data)
               }
             }
 
-            // Save multi-tab data for this equipment
-            const allMultiTabItems = [
-              ...this.multiTabData.signals.map(s => ({...s, type: 'signal'})),
-              ...this.multiTabData.specs.map(s => ({...s, type: 'spec'})),
-              ...this.multiTabData.docs.map(d => ({...d, type: 'doc'}))
-            ]
-
-            for (const item of allMultiTabItems) {
-              if (item.isNew && item.source_table === equipment.source_table) {
-                const itemData = { ...item, eqp_id: response.data.id }
-                delete itemData.id
-                delete itemData.isNew
-                delete itemData.source_table
-                delete itemData.source_column
-                delete itemData.type
-
-                if (item.type === 'signal') {
-                  await metaAPI.createSignal(itemData)
-                } else if (item.type === 'spec') {
-                  await metaAPI.createSpec(itemData)
-                } else if (item.type === 'doc') {
-                  await metaAPI.createDoc(itemData)
+            // Save specifications for this equipment
+            const equipmentSpecs = this.multiTabData.specs.filter(s =>
+              s.eqp_id === equipment.id || (!s.eqp_id && s.source_table === equipment.source_table)
+            )
+            for (const spec of equipmentSpecs) {
+              if (spec.isNew) {
+                const specData = {
+                  eqp_id: response.data.id, // Use actual saved equipment ID
+                  key: spec.key,
+                  value: spec.value,
+                  desc: spec.desc,
+                  unit: spec.unit,
+                  enable: spec.enable
                 }
-                console.log('✅ Multi-tab item saved:', item.type, itemData)
+
+                console.log('📋 Saving specification:', specData)
+                const specResponse = await metaAPI.createSpec(specData)
+                console.log('✅ Specification saved successfully:', specResponse.data)
+              }
+            }
+
+            // ENHANCED: Save signals with value field for this equipment
+            const equipmentSignals = this.multiTabData.signals.filter(s =>
+              s.eqp_id === equipment.id || (!s.eqp_id && s.source_table === equipment.source_table)
+            )
+            for (const signal of equipmentSignals) {
+              if (signal.isNew) {
+                const signalData = {
+                  eqp_id: response.data.id, // Use actual saved equipment ID
+                  key: signal.key,
+                  value: signal.value, // ENHANCED: Include value field
+                  unit: signal.unit,
+                  desc: signal.desc,
+                  enable: signal.enable
+                }
+
+                console.log('📊 [ENHANCED] Saving signal with value:', signalData)
+                const signalResponse = await metaAPI.createSignal(signalData)
+                console.log('✅ Signal saved successfully:', signalResponse.data)
+              }
+            }
+
+            // Save documents for this equipment
+            const equipmentDocs = this.multiTabData.docs.filter(d =>
+              d.eqp_id === equipment.id || (!d.eqp_id && d.source_table === equipment.source_table)
+            )
+            for (const doc of equipmentDocs) {
+              if (doc.isNew) {
+                const docData = {
+                  eqp_id: response.data.id, // Use actual saved equipment ID
+                  path: doc.path,
+                  desc: doc.desc
+                }
+
+                console.log('📄 Saving document:', docData)
+                const docResponse = await metaAPI.createDoc(docData)
+                console.log('✅ Document saved successfully:', docResponse.data)
               }
             }
           }
@@ -637,8 +839,8 @@ export default {
 
         this.$q.notify({
           type: 'positive',
-          message: 'All mappings saved successfully!',
-          timeout: 3000
+          message: `All mappings saved successfully! Signals use default values when not specified.`,
+          timeout: 4000
         })
 
       } catch (error) {
@@ -686,5 +888,190 @@ export default {
 .q-card {
   border-radius: 12px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* Enhanced visual feedback for active areas */
+.q-card:hover {
+  transform: translateY(-2px);
+  transition: transform 0.2s ease;
+}
+
+/* Responsive design adjustments */
+@media (max-width: 768px) {
+  .q-pa-md {
+    padding: 8px;
+  }
+
+  .row.q-gutter-md > * {
+    margin: 8px 0;
+  }
+
+  .col-lg-4,
+  .col-lg-8 {
+    width: 100%;
+  }
+}
+
+/* Loading animations */
+@keyframes pulse {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.q-spinner-gears {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+/* Status indicators */
+.text-primary {
+  color: #1976d2 !important;
+}
+
+.text-positive {
+  color: #21ba45 !important;
+}
+
+.text-negative {
+  color: #c10015 !important;
+}
+
+/* Enhanced button styles */
+.q-btn {
+  border-radius: 8px;
+  font-weight: 500;
+}
+
+.q-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  transition: all 0.2s ease;
+}
+
+/* Card section enhancements */
+.q-card-section {
+  transition: background-color 0.2s ease;
+}
+
+/* Enhanced dialog styles */
+.q-dialog .q-card {
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+/* Notification enhancements */
+.q-notification {
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Empty state styling */
+.q-icon[color="grey-4"] {
+  opacity: 0.6;
+}
+
+/* Header gradient */
+.bg-blue-1 {
+  background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+  border: 1px solid #90caf9;
+}
+
+/* Connection selector card */
+.q-select {
+  border-radius: 8px;
+}
+
+/* Enhanced spacing */
+.q-gutter-md > * + * {
+  margin-left: 16px !important;
+}
+
+@media (max-width: 600px) {
+  .q-gutter-md > * + * {
+    margin-left: 0 !important;
+    margin-top: 16px !important;
+  }
+}
+
+/* Validation dialog styling */
+.text-h6.text-negative {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.text-h6.text-negative::before {
+  content: "⚠️";
+  font-size: 1.2em;
+}
+
+/* Loading state enhancements */
+.q-spinner-gears {
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
+}
+
+/* Success state styling */
+.text-positive {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Equipment list enhancements */
+.q-chip {
+  font-weight: 600;
+  border-radius: 6px;
+}
+
+/* Tab content spacing */
+.q-tab-panels {
+  min-height: 400px;
+}
+
+/* Enhanced transitions */
+* {
+  transition: color 0.2s ease, background-color 0.2s ease, border-color 0.2s ease;
+}
+
+/* Focus states */
+.q-field--focused .q-field__control {
+  box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.2);
+}
+
+/* Hover states for interactive elements */
+.q-item:hover {
+  background-color: rgba(25, 118, 210, 0.04);
+}
+
+/* Enhanced scrollbar for better UX */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* Firefox scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #c1c1c1 #f1f1f1;
 }
 </style>

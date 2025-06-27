@@ -1,4 +1,4 @@
-<!-- components/TargetPanel.vue -->
+<!-- components/TargetPanel.vue - ENHANCED SIGNAL DIALOG WITH VALUE FIELD -->
 <template>
   <div class="target-panel">
     <!-- Master Model Display -->
@@ -250,7 +250,7 @@
               </q-chip>
             </div>
             <div class="text-caption text-grey-7">
-              Drag columns to Signals, Specs, or Docs tabs
+              Drag columns to Signals, Specs, or Docs tabs (or add manually)
             </div>
           </q-card-section>
 
@@ -286,7 +286,7 @@
 
           <!-- Tab Panels -->
           <q-tab-panels v-model="activeTab" animated>
-            <!-- Signals Tab -->
+            <!-- ENHANCED: Signals Tab with Value Display -->
             <q-tab-panel name="signals" class="q-pa-none">
               <div
                 class="multi-tab-drop-zone"
@@ -308,8 +308,9 @@
                       <q-item-section>
                         <q-item-label>{{ signal.key }}</q-item-label>
                         <q-item-label caption>
-                          {{ signal.data_type }} • {{ signal.desc }}
-                          <span v-if="signal.unit"> • Unit: {{ signal.unit }}</span>
+                          <strong>Value:</strong> {{ signal.value || 'Not set' }}
+                          <span v-if="signal.unit"> • <strong>Unit:</strong> {{ signal.unit }}</span>
+                          <br>{{ signal.desc }}
                         </q-item-label>
                       </q-item-section>
                       <q-item-section side>
@@ -355,26 +356,60 @@
                       class="multi-tab-item"
                     >
                       <q-item-section avatar>
-                        <q-icon name="engineering" color="green" />
+                        <q-icon
+                          :name="spec.isManual ? 'edit' : 'engineering'"
+                          :color="spec.isManual ? 'purple' : 'green'"
+                        />
                       </q-item-section>
                       <q-item-section>
                         <q-item-label>{{ spec.key }}</q-item-label>
-                        <q-item-label caption>{{ spec.desc }}</q-item-label>
+                        <q-item-label caption>
+                          {{ spec.desc }}
+                          <span v-if="spec.value"> • Value: {{ spec.value }}</span>
+                          <span v-if="spec.unit"> • Unit: {{ spec.unit }}</span>
+                          <br><span class="text-grey-6">{{ spec.isManual ? 'Manual Entry' : 'From Column' }}</span>
+                        </q-item-label>
                       </q-item-section>
                       <q-item-section side>
-                        <q-btn
-                          round
-                          flat
-                          size="sm"
-                          icon="delete"
-                          color="negative"
-                          @click="removeMultiTabItem(spec, 'specs')"
-                        >
-                          <q-tooltip>Remove</q-tooltip>
-                        </q-btn>
+                        <div class="row q-gutter-xs">
+                          <q-btn
+                            round
+                            flat
+                            size="sm"
+                            icon="edit"
+                            color="primary"
+                            @click="editSpec(spec)"
+                            v-if="spec.isManual"
+                          >
+                            <q-tooltip>Edit specification</q-tooltip>
+                          </q-btn>
+                          <q-btn
+                            round
+                            flat
+                            size="sm"
+                            icon="delete"
+                            color="negative"
+                            @click="removeMultiTabItem(spec, 'specs')"
+                          >
+                            <q-tooltip>Remove</q-tooltip>
+                          </q-btn>
+                        </div>
                       </q-item-section>
                     </q-item>
                   </q-list>
+
+                  <!-- Add Manual Specification Button -->
+                  <div class="q-pa-sm">
+                    <q-btn
+                      flat
+                      color="green"
+                      icon="add"
+                      label="Add Manual Specification"
+                      @click="openManualSpecDialog"
+                      size="sm"
+                      class="full-width"
+                    />
+                  </div>
                 </div>
 
                 <div v-else class="empty-drop-zone q-pa-xl text-center">
@@ -383,6 +418,14 @@
                   <div class="text-body2 text-grey-7">
                     Drag columns to define equipment specifications
                   </div>
+                  <q-btn
+                    flat
+                    color="green"
+                    icon="add"
+                    label="Add Manual Specification"
+                    @click="openManualSpecDialog"
+                    class="q-mt-md"
+                  />
                 </div>
               </div>
             </q-tab-panel>
@@ -404,28 +447,59 @@
                       class="multi-tab-item"
                     >
                       <q-item-section avatar>
-                        <q-icon name="description" color="blue" />
+                        <q-icon
+                          :name="doc.isManual ? 'note_add' : 'description'"
+                          :color="doc.isManual ? 'purple' : 'blue'"
+                        />
                       </q-item-section>
                       <q-item-section>
                         <q-item-label>{{ doc.desc }}</q-item-label>
                         <q-item-label caption>
-                          Source: {{ doc.source_column }}
+                          <span v-if="doc.path">Path: {{ doc.path }}</span>
+                          <span v-if="!doc.isManual">Source: {{ doc.source_column }}</span>
+                          <br><span class="text-grey-6">{{ doc.isManual ? 'Manual Entry' : 'From Column' }}</span>
                         </q-item-label>
                       </q-item-section>
                       <q-item-section side>
-                        <q-btn
-                          round
-                          flat
-                          size="sm"
-                          icon="delete"
-                          color="negative"
-                          @click="removeMultiTabItem(doc, 'docs')"
-                        >
-                          <q-tooltip>Remove</q-tooltip>
-                        </q-btn>
+                        <div class="row q-gutter-xs">
+                          <q-btn
+                            round
+                            flat
+                            size="sm"
+                            icon="edit"
+                            color="primary"
+                            @click="editDoc(doc)"
+                            v-if="doc.isManual"
+                          >
+                            <q-tooltip>Edit document</q-tooltip>
+                          </q-btn>
+                          <q-btn
+                            round
+                            flat
+                            size="sm"
+                            icon="delete"
+                            color="negative"
+                            @click="removeMultiTabItem(doc, 'docs')"
+                          >
+                            <q-tooltip>Remove</q-tooltip>
+                          </q-btn>
+                        </div>
                       </q-item-section>
                     </q-item>
                   </q-list>
+
+                  <!-- Add Manual Document Button -->
+                  <div class="q-pa-sm">
+                    <q-btn
+                      flat
+                      color="blue"
+                      icon="add"
+                      label="Add Manual Document"
+                      @click="openManualDocDialog"
+                      size="sm"
+                      class="full-width"
+                    />
+                  </div>
                 </div>
 
                 <div v-else class="empty-drop-zone q-pa-xl text-center">
@@ -434,6 +508,14 @@
                   <div class="text-body2 text-grey-7">
                     Drag columns for documentation references
                   </div>
+                  <q-btn
+                    flat
+                    color="blue"
+                    icon="add"
+                    label="Add Manual Document"
+                    @click="openManualDocDialog"
+                    class="q-mt-md"
+                  />
                 </div>
               </div>
             </q-tab-panel>
@@ -512,7 +594,7 @@
       </q-card>
     </q-dialog>
 
-    <!-- Add Manual Filter Dialog -->
+    <!-- Manual Filter Dialog -->
     <q-dialog v-model="showAddManualFilter" persistent>
       <q-card style="min-width: 400px">
         <q-card-section>
@@ -555,34 +637,151 @@
       </q-card>
     </q-dialog>
 
-    <!-- Signal Unit Dialog -->
-    <q-dialog v-model="showSignalDialog" persistent>
-      <q-card style="min-width: 400px">
+    <!-- Manual Specification Dialog -->
+    <q-dialog v-model="showAddManualSpec" persistent>
+      <q-card style="min-width: 500px">
         <q-card-section>
-          <div class="text-h6">Add Signal{{ pendingSignals.length > 1 ? 's' : '' }}</div>
+          <div class="text-h6">{{ editingSpec?.id ? 'Edit' : 'Add' }} Manual Specification</div>
+        </q-card-section>
+
+        <q-card-section class="q-pt-none">
+          <q-input
+            v-model="manualSpecForm.key"
+            label="Specification Key *"
+            outlined
+            placeholder="e.g., rating, voltage, capacity"
+            class="q-mb-md"
+          />
+          <q-input
+            v-model="manualSpecForm.value"
+            label="Value *"
+            outlined
+            placeholder="e.g., 1000, 220V, 500kW"
+            class="q-mb-md"
+          />
+          <q-input
+            v-model="manualSpecForm.desc"
+            label="Description *"
+            outlined
+            placeholder="e.g., rating of the machine"
+            class="q-mb-md"
+          />
+          <q-input
+            v-model="manualSpecForm.unit"
+            label="Unit (Optional)"
+            outlined
+            placeholder="e.g., kV, MW, Hz"
+            class="q-mb-md"
+          />
+          <q-select
+            v-model="manualSpecForm.eqp_id"
+            :options="equipmentOptions"
+            option-label="name"
+            option-value="id"
+            label="Link to Equipment *"
+            outlined
+            map-options
+            emit-value
+            :disable="equipmentList.length === 0"
+            hint="Select which equipment this specification applies to"
+          />
+        </q-card-section>
+
+        <q-card-actions align="right" class="text-primary">
+          <q-btn flat label="Cancel" v-close-popup @click="resetManualSpecForm" />
+          <q-btn flat :label="editingSpec?.id ? 'Update' : 'Add'" @click="addManualSpec" />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
+
+    <!-- Manual Document Dialog -->
+    <q-dialog v-model="showAddManualDoc" persistent>
+      <q-card style="min-width: 500px">
+        <q-card-section>
+          <div class="text-h6">{{ editingDoc?.id ? 'Edit' : 'Add' }} Manual Document</div>
+        </q-card-section>
+
+        <q-card-section class="q-pt-none">
+          <q-input
+            v-model="manualDocForm.path"
+            label="Document Path *"
+            outlined
+            placeholder="e.g., /docs/user_manual.pdf, C:\Documents\manual.pdf"
+            class="q-mb-md"
+          />
+          <q-input
+            v-model="manualDocForm.desc"
+            label="Description *"
+            outlined
+            placeholder="e.g., user manual, installation guide"
+            class="q-mb-md"
+          />
+          <q-select
+            v-model="manualDocForm.eqp_id"
+            :options="equipmentOptions"
+            option-label="name"
+            option-value="id"
+            label="Link to Equipment *"
+            outlined
+            map-options
+            emit-value
+            :disable="equipmentList.length === 0"
+            hint="Select which equipment this document applies to"
+          />
+        </q-card-section>
+
+        <q-card-actions align="right" class="text-primary">
+          <q-btn flat label="Cancel" v-close-popup @click="resetManualDocForm" />
+          <q-btn flat :label="editingDoc?.id ? 'Update' : 'Add'" @click="addManualDoc" />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
+
+    <!-- ENHANCED: Signal Dialog with Value and Unit Fields -->
+    <q-dialog v-model="showSignalDialog" persistent>
+      <q-card style="min-width: 500px">
+        <q-card-section>
+          <div class="text-h6">Configure Signal{{ pendingSignals.length > 1 ? 's' : '' }}</div>
         </q-card-section>
 
         <q-card-section class="q-pt-none">
           <div v-if="pendingSignals.length === 1" class="q-mb-md">
-            <strong>Signal:</strong> {{ pendingSignals[0]?.name }}
+            <div class="text-subtitle2"><strong>Signal Key:</strong> {{ pendingSignals[0]?.name }}</div>
+            <div class="text-caption text-grey-7">Configure the signal value and unit</div>
           </div>
           <div v-else class="q-mb-md">
-            <strong>Adding {{ pendingSignals.length }} signals:</strong>
-            <div class="text-caption">{{ pendingSignals.map(s => s.name).join(', ') }}</div>
+            <div class="text-subtitle2"><strong>Adding {{ pendingSignals.length }} signals:</strong></div>
+            <div class="text-caption text-grey-7">{{ pendingSignals.map(s => s.name).join(', ') }}</div>
+            <div class="text-caption text-grey-7">Same value and unit will be applied to all signals</div>
           </div>
 
+          <!-- FIXED: Signal Value Field (Optional - defaults to signal name) -->
+          <q-input
+            v-model="signalValue"
+            label="Signal Value (Optional)"
+            outlined
+            placeholder="e.g., hvac-stop, pump-start, alarm-on (leave empty to use signal name)"
+            hint="Leave empty to use the signal name as value, or enter custom value"
+            class="q-mb-md"
+          />
+
+          <!-- Existing: Signal Unit Field (Optional) -->
           <q-input
             v-model="signalUnit"
             label="Unit (Optional)"
             outlined
-            placeholder="e.g., V, A, °C, %"
-            hint="Leave empty if no unit or different units for each signal"
+            placeholder="e.g., V, A, °C, %, Hz"
+            hint="Leave empty if no unit applies"
           />
         </q-card-section>
 
         <q-card-actions align="right" class="text-primary">
           <q-btn flat label="Cancel" v-close-popup @click="resetSignalDialog" />
-          <q-btn flat label="Add Signal{{ pendingSignals.length > 1 ? 's' : '' }}" @click="confirmAddSignals" />
+          <q-btn
+            flat
+            :label="'Add Signal' + (pendingSignals.length > 1 ? 's' : '')"
+            @click="confirmAddSignals"
+          />
         </q-card-actions>
       </q-card>
     </q-dialog>
@@ -617,7 +816,8 @@ export default {
   emits: [
     'equipment-drop', 'filter-drop', 'multi-tab-drop',
     'equipment-edit', 'equipment-remove', 'filter-edit', 'filter-remove',
-    'manual-filter-add', 'multi-tab-remove'
+    'manual-filter-add', 'multi-tab-remove',
+    'manual-spec-add', 'manual-doc-add', 'spec-edit', 'doc-edit'
   ],
   data() {
     return {
@@ -651,10 +851,31 @@ export default {
         eqp_id: null
       },
 
-      // Signal dialog
+      // Manual Specification dialogs and forms
+      showAddManualSpec: false,
+      editingSpec: null,
+      manualSpecForm: {
+        key: '',
+        value: '',
+        desc: '',
+        unit: '',
+        eqp_id: null
+      },
+
+      // Manual Document dialogs and forms
+      showAddManualDoc: false,
+      editingDoc: null,
+      manualDocForm: {
+        path: '',
+        desc: '',
+        eqp_id: null
+      },
+
+      // ENHANCED: Signal dialog with value field
       showSignalDialog: false,
       pendingSignals: [],
-      signalUnit: ''
+      signalValue: '', // NEW: Required signal value field
+      signalUnit: '' // Existing: Optional signal unit field
     }
   },
   computed: {
@@ -667,8 +888,8 @@ export default {
       const options = this.equipmentList.map(eq => ({
         id: eq.id,
         name: eq.name,
-        label: eq.name, // Add label for q-select
-        value: eq.id    // Add value for q-select
+        label: eq.name,
+        value: eq.id
       }))
       console.log('🔍 Equipment options generated:', options)
       return options
@@ -703,10 +924,8 @@ export default {
         const dragData = JSON.parse(event.dataTransfer.getData('application/json'))
 
         if (dragData.type === 'column') {
-          // Single column drop - show dialog for filter value and equipment selection
           this.showFilterValueDialog(dragData.data)
         } else if (dragData.type === 'multi-column') {
-          // Multi-column drop - process each column
           this.showMultiFilterDialog(dragData.data)
         }
       } catch (error) {
@@ -728,13 +947,10 @@ export default {
     },
 
     showMultiFilterDialog(columns) {
-      // For multi-column, show dialog for first column, then auto-add others
       if (columns.length === 1) {
         this.showFilterValueDialog(columns[0])
       } else {
-        // Add each column as separate filter with dialog for first one
         this.showFilterValueDialog(columns[0])
-        // Auto-add remaining columns with default equipment and empty value
         const defaultEquipmentId = this.equipmentList.length > 0 ? this.equipmentList[0].id : null
 
         for (let i = 1; i < columns.length; i++) {
@@ -759,7 +975,7 @@ export default {
 
         if (dragData.type === 'column') {
           if (tabType === 'signals') {
-            // Show unit dialog for signals
+            // Show enhanced signal dialog with value and unit fields
             this.pendingSignals = [dragData.data]
             this.showSignalDialog = true
           } else {
@@ -770,11 +986,10 @@ export default {
           }
         } else if (dragData.type === 'multi-column') {
           if (tabType === 'signals') {
-            // Show unit dialog for multiple signals
+            // Show enhanced signal dialog for multiple signals
             this.pendingSignals = dragData.data
             this.showSignalDialog = true
           } else {
-            // Add multiple columns to other tabs
             dragData.data.forEach(column => {
               this.$emit('multi-tab-drop', {
                 column: column,
@@ -805,7 +1020,6 @@ export default {
       }
     },
 
-    // Filter management methods
     editFilter(filter) {
       this.editingFilter = filter
       this.filterForm = {
@@ -837,49 +1051,9 @@ export default {
       this.editingFilter = null
     },
 
-    addManualFilter() {
-      if (this.manualFilterForm.filter_key && this.manualFilterForm.filter_value && this.manualFilterForm.eqp_id) {
-        this.$emit('manual-filter-add', this.manualFilterForm)
-        this.resetManualFilterForm()
-        this.showAddManualFilter = false
-      }
-    },
-
-    resetManualFilterForm() {
-      console.log('🔄 Resetting manual filter form')
-      this.manualFilterForm = {
-        filter_key: '',
-        filter_value: '',
-        eqp_id: null
-      }
-    },
-
-    // Signal dialog methods
-    confirmAddSignals() {
-      this.pendingSignals.forEach(column => {
-        this.$emit('multi-tab-drop', {
-          column: { ...column, unit: this.signalUnit },
-          tabType: 'signals'
-        })
-      })
-      this.resetSignalDialog()
-    },
-
-    resetSignalDialog() {
-      this.pendingSignals = []
-      this.signalUnit = ''
-      this.showSignalDialog = false
-    },
-
-    // Helper methods
-    getEquipmentName(equipmentId) {
-      const equipment = this.equipmentList.find(eq => eq.id === equipmentId)
-      return equipment ? equipment.name : 'Unknown'
-    },
-
+    // Manual Filter Methods
     openManualFilterDialog() {
       console.log('🔧 Opening manual filter dialog')
-      console.log('🔧 Available equipment:', this.equipmentList)
 
       if (this.equipmentList.length === 0) {
         this.$q.notify({
@@ -890,14 +1064,279 @@ export default {
         return
       }
 
-      // Reset form and set default equipment
       this.resetManualFilterForm()
       if (this.equipmentList.length > 0) {
         this.manualFilterForm.eqp_id = this.equipmentList[0].id
       }
 
       this.showAddManualFilter = true
-      console.log('🔧 Manual filter dialog opened')
+    },
+
+    addManualFilter() {
+      console.log('🚀 Adding manual filter')
+
+      if (!this.manualFilterForm.filter_key) {
+        this.$q.notify({
+          type: 'negative',
+          message: 'Filter key is required'
+        })
+        return
+      }
+
+      if (!this.manualFilterForm.filter_value) {
+        this.$q.notify({
+          type: 'negative',
+          message: 'Filter value is required'
+        })
+        return
+      }
+
+      if (!this.manualFilterForm.eqp_id) {
+        this.$q.notify({
+          type: 'negative',
+          message: 'Equipment selection is required'
+        })
+        return
+      }
+
+      const manualFilterData = {
+        filter_key: this.manualFilterForm.filter_key,
+        filter_value: this.manualFilterForm.filter_value,
+        eqp_id: this.manualFilterForm.eqp_id,
+        isManual: true
+      }
+
+      this.$emit('manual-filter-add', manualFilterData)
+
+      this.resetManualFilterForm()
+      this.showAddManualFilter = false
+    },
+
+    resetManualFilterForm() {
+      this.manualFilterForm = {
+        filter_key: '',
+        filter_value: '',
+        eqp_id: null
+      }
+    },
+
+    // Manual Specification Methods
+    openManualSpecDialog() {
+      console.log('🔧 Opening manual specification dialog')
+
+      if (this.equipmentList.length === 0) {
+        this.$q.notify({
+          type: 'warning',
+          message: 'Please create equipment first before adding specifications',
+          timeout: 3000
+        })
+        return
+      }
+
+      this.resetManualSpecForm()
+      if (this.equipmentList.length > 0) {
+        this.manualSpecForm.eqp_id = this.equipmentList[0].id
+      }
+
+      this.editingSpec = null
+      this.showAddManualSpec = true
+    },
+
+    editSpec(spec) {
+      console.log('🔧 Editing specification:', spec)
+      this.editingSpec = spec
+      this.manualSpecForm = {
+        key: spec.key,
+        value: spec.value,
+        desc: spec.desc,
+        unit: spec.unit || '',
+        eqp_id: spec.eqp_id
+      }
+      this.showAddManualSpec = true
+    },
+
+    addManualSpec() {
+      console.log('🚀 Adding/updating manual specification')
+
+      if (!this.manualSpecForm.key) {
+        this.$q.notify({
+          type: 'negative',
+          message: 'Specification key is required'
+        })
+        return
+      }
+
+      if (!this.manualSpecForm.value) {
+        this.$q.notify({
+          type: 'negative',
+          message: 'Specification value is required'
+        })
+        return
+      }
+
+      if (!this.manualSpecForm.desc) {
+        this.$q.notify({
+          type: 'negative',
+          message: 'Description is required'
+        })
+        return
+      }
+
+      if (!this.manualSpecForm.eqp_id) {
+        this.$q.notify({
+          type: 'negative',
+          message: 'Equipment selection is required'
+        })
+        return
+      }
+
+      const manualSpecData = {
+        key: this.manualSpecForm.key,
+        value: this.manualSpecForm.value,
+        desc: this.manualSpecForm.desc,
+        unit: this.manualSpecForm.unit,
+        eqp_id: this.manualSpecForm.eqp_id,
+        isManual: true
+      }
+
+      if (this.editingSpec) {
+        this.$emit('spec-edit', this.editingSpec, manualSpecData)
+      } else {
+        this.$emit('manual-spec-add', manualSpecData)
+      }
+
+      this.resetManualSpecForm()
+      this.showAddManualSpec = false
+    },
+
+    resetManualSpecForm() {
+      this.manualSpecForm = {
+        key: '',
+        value: '',
+        desc: '',
+        unit: '',
+        eqp_id: null
+      }
+      this.editingSpec = null
+    },
+
+    // Manual Document Methods
+    openManualDocDialog() {
+      console.log('🔧 Opening manual document dialog')
+
+      if (this.equipmentList.length === 0) {
+        this.$q.notify({
+          type: 'warning',
+          message: 'Please create equipment first before adding documents',
+          timeout: 3000
+        })
+        return
+      }
+
+      this.resetManualDocForm()
+      if (this.equipmentList.length > 0) {
+        this.manualDocForm.eqp_id = this.equipmentList[0].id
+      }
+
+      this.editingDoc = null
+      this.showAddManualDoc = true
+    },
+
+    editDoc(doc) {
+      console.log('🔧 Editing document:', doc)
+      this.editingDoc = doc
+      this.manualDocForm = {
+        path: doc.path,
+        desc: doc.desc,
+        eqp_id: doc.eqp_id
+      }
+      this.showAddManualDoc = true
+    },
+
+    addManualDoc() {
+      console.log('🚀 Adding/updating manual document')
+
+      if (!this.manualDocForm.path) {
+        this.$q.notify({
+          type: 'negative',
+          message: 'Document path is required'
+        })
+        return
+      }
+
+      if (!this.manualDocForm.desc) {
+        this.$q.notify({
+          type: 'negative',
+          message: 'Description is required'
+        })
+        return
+      }
+
+      if (!this.manualDocForm.eqp_id) {
+        this.$q.notify({
+          type: 'negative',
+          message: 'Equipment selection is required'
+        })
+        return
+      }
+
+      const manualDocData = {
+        path: this.manualDocForm.path,
+        desc: this.manualDocForm.desc,
+        eqp_id: this.manualDocForm.eqp_id,
+        isManual: true
+      }
+
+      if (this.editingDoc) {
+        this.$emit('doc-edit', this.editingDoc, manualDocData)
+      } else {
+        this.$emit('manual-doc-add', manualDocData)
+      }
+
+      this.resetManualDocForm()
+      this.showAddManualDoc = false
+    },
+
+    resetManualDocForm() {
+      this.manualDocForm = {
+        path: '',
+        desc: '',
+        eqp_id: null
+      }
+      this.editingDoc = null
+    },
+
+    // ENHANCED: Signal dialog methods with optional value field
+    confirmAddSignals() {
+      console.log('🚀 [ENHANCED] Adding signals with value and unit')
+      console.log('🚀 Signal Value:', this.signalValue || 'Using signal name as default')
+      console.log('🚀 Signal Unit:', this.signalUnit)
+      console.log('🚀 Pending Signals:', this.pendingSignals)
+
+      this.pendingSignals.forEach(column => {
+        this.$emit('multi-tab-drop', {
+          column: {
+            ...column,
+            value: this.signalValue || column.name, // FIXED: Use signal name as default if no value provided
+            unit: this.signalUnit    // Existing: Include signal unit
+          },
+          tabType: 'signals'
+        })
+      })
+      this.resetSignalDialog()
+    },
+
+    resetSignalDialog() {
+      this.pendingSignals = []
+      this.signalValue = '' // NEW: Reset signal value
+      this.signalUnit = ''  // Existing: Reset signal unit
+      this.showSignalDialog = false
+    },
+
+    // Helper methods
+    getEquipmentName(equipmentId) {
+      const equipment = this.equipmentList.find(eq => eq.id === equipmentId)
+      return equipment ? equipment.name : 'Unknown'
     },
 
     removeEquipment(equipment) {
@@ -981,5 +1420,16 @@ export default {
 .q-tab .q-badge {
   top: 8px;
   right: 8px;
+}
+
+/* Visual distinction for manual entries */
+.multi-tab-item {
+  border-left: 3px solid transparent;
+}
+
+.multi-tab-item:has(.q-icon[name="edit"]),
+.multi-tab-item:has(.q-icon[name="note_add"]) {
+  border-left-color: #9c27b0;
+  background: linear-gradient(90deg, #f3e5f5 0%, transparent 10%);
 }
 </style>

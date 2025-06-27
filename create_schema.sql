@@ -66,3 +66,29 @@ CREATE TABLE equipment_filters (
     filter_value TEXT(64) NOT NULL,
     FOREIGN KEY (eqp_id) REFERENCES equipments(id)
 );
+
+
+CREATE TABLE connection_configs (
+	id INTEGER NOT NULL, 
+	connection_id VARCHAR NOT NULL, 
+	config_key VARCHAR(64) NOT NULL, 
+	config_value TEXT NOT NULL, 
+	created_at DATETIME, 
+	updated_at DATETIME, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(connection_id) REFERENCES data_connections (id)
+)
+
+CREATE TABLE data_connections (
+	id VARCHAR NOT NULL, 
+	name VARCHAR(128) NOT NULL, 
+	db_type VARCHAR(32) NOT NULL, 
+	description TEXT, 
+	status VARCHAR(32), 
+	created_at DATETIME, 
+	updated_at DATETIME, 
+	PRIMARY KEY (id), 
+	UNIQUE (name)
+)
+CREATE UNIQUE INDEX `sqlite_autoindex_data_connections_2` ON `data_connections` (name);
+CREATE UNIQUE INDEX `sqlite_autoindex_data_connections_1` ON `data_connections` (id);
