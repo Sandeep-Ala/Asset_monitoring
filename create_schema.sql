@@ -92,3 +92,36 @@ CREATE TABLE data_connections (
 )
 CREATE UNIQUE INDEX `sqlite_autoindex_data_connections_2` ON `data_connections` (name);
 CREATE UNIQUE INDEX `sqlite_autoindex_data_connections_1` ON `data_connections` (id);
+
+
+
+
+-- Enhanced pages table
+ALTER TABLE pages ADD COLUMN layout_data TEXT;
+
+-- New widget table
+CREATE TABLE widgets (
+    widget_id TEXT PRIMARY KEY,
+    page_id TEXT,
+    widget_type TEXT,
+    widget_label TEXT,
+    equipment_ids TEXT,  -- JSON: ["1", "2", "3"]
+    signal_ids TEXT,     -- JSON: ["5", "6", "7"]  
+    filter_selections TEXT, -- JSON: {"equipment_1": {"dcu": "1"}}
+    position_data TEXT,  -- JSON: {"x": 0, "y": 0, "w": 4, "h": 2}
+    styling_config TEXT, -- JSON: {"colors": ["#ff0000"]}
+    created_at DATETIME,
+    updated_at DATETIME
+);
+
+-- Time settings table
+CREATE TABLE page_time_settings (
+    page_id TEXT PRIMARY KEY,
+    default_time_range TEXT,
+    default_refresh_rate TEXT,
+    last_time_start TEXT,
+    last_time_end TEXT,
+    last_range_type TEXT,
+    created_at DATETIME,
+    updated_at DATETIME
+);

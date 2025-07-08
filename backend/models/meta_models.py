@@ -1,6 +1,6 @@
-#meta_models.py
-from sqlalchemy import Column, Integer, String, ForeignKey,DateTime
-from sqlalchemy.orm import declarative_base
+# models/meta_models.py - Updated with Widget Relationships
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Text
+from sqlalchemy.orm import declarative_base, relationship
 import uuid
 from datetime import datetime
 
@@ -13,8 +13,16 @@ class Page(Base):
     page_name = Column(String(64), nullable=False)
     user_name = Column(String(64), nullable=False)
     page_route = Column(String(128), nullable=False, unique=True)
+    
+    # Enhanced layout data - stores complete layout + widget positions
+    layout_data = Column(Text)  # JSON: GridStack layout + widget metadata
+    
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships to widgets and time settings
+    widgets = relationship("Widget", back_populates="page", cascade="all, delete-orphan")
+    time_settings = relationship("PageTimeSettings", back_populates="page", uselist=False, cascade="all, delete-orphan")
     
 class MasterModel(Base):
     __tablename__ = "master_model"
@@ -63,4 +71,3 @@ class EquipmentFilter(Base):
     eqp_id = Column(Integer, ForeignKey("equipments.id"))
     filter_key = Column(String(64), nullable=False)
     filter_value = Column(String(64), nullable=False)
-
