@@ -60,77 +60,169 @@
           </div>
         </div>
 
-        <!-- Time Range Selection -->
+        <!-- Enhanced Time Range Selection -->
         <div class="q-mb-md">
           <div class="text-subtitle2 q-mb-sm">
             <q-icon name="schedule" class="q-mr-xs" />
-            Time Range
+            Select Time Range
           </div>
 
-          <q-select
-            v-model="selectedTimeRange"
-            :options="timeRangeOptions"
-            option-label="label"
-            option-value="value"
-            outlined
-            dense
-            map-options
-            emit-value
-            @update:model-value="onTimeRangeChange"
-            :loading="isLoadingPresets"
-            class="q-mb-sm"
-          >
-            <template v-slot:prepend>
-              <q-icon name="date_range" />
-            </template>
-          </q-select>
+          <!-- Quick Preset Buttons -->
+          <div class="quick-presets q-mb-md">
+            <div class="text-caption text-grey-7 q-mb-xs">Quick selection:</div>
+            <q-btn-group flat class="full-width">
+              <q-btn
+                flat
+                label="1h"
+                @click="setQuickRange('last_1h')"
+                size="sm"
+                :color="selectedTimeRange === 'last_1h' ? 'primary' : 'grey-7'"
+                class="col"
+              />
+              <q-btn
+                flat
+                label="6h"
+                @click="setQuickRange('last_6h')"
+                size="sm"
+                :color="selectedTimeRange === 'last_6h' ? 'primary' : 'grey-7'"
+                class="col"
+              />
+              <q-btn
+                flat
+                label="24h"
+                @click="setQuickRange('last_24h')"
+                size="sm"
+                :color="selectedTimeRange === 'last_24h' ? 'primary' : 'grey-7'"
+                class="col"
+              />
+              <q-btn
+                flat
+                label="7d"
+                @click="setQuickRange('last_7d')"
+                size="sm"
+                :color="selectedTimeRange === 'last_7d' ? 'primary' : 'grey-7'"
+                class="col"
+              />
+            </q-btn-group>
+          </div>
 
-          <!-- Custom Date/Time Pickers -->
-          <div v-if="selectedTimeRange === 'custom'" class="custom-time-inputs">
-            <div class="row q-gutter-sm">
+          <!-- Primary Custom Date/Time Inputs -->
+          <div class="custom-datetime-primary">
+            <div class="text-caption text-grey-7 q-mb-xs">Or select custom range:</div>
+            <div class="row q-gutter-md">
               <div class="col">
                 <q-input
-                  v-model="customStartTime"
+                  v-model="customFromTime"
                   type="datetime-local"
                   outlined
-                  dense
-                  label="Start Time"
+                  label="From Date & Time"
                   @update:model-value="onCustomTimeChange"
                   :error="customTimeError"
                   :error-message="customTimeErrorMessage"
+                  class="datetime-input"
                 >
                   <template v-slot:prepend>
-                    <q-icon name="play_arrow" />
+                    <q-icon name="event" color="primary" />
+                  </template>
+                  <template v-slot:append>
+                    <q-icon name="schedule" class="cursor-pointer text-grey-6" @click="setFromToNow(-1)">
+                      <q-tooltip>Set to 1 hour ago</q-tooltip>
+                    </q-icon>
                   </template>
                 </q-input>
               </div>
               <div class="col">
                 <q-input
-                  v-model="customEndTime"
+                  v-model="customToTime"
                   type="datetime-local"
                   outlined
-                  dense
-                  label="End Time"
+                  label="To Date & Time"
                   @update:model-value="onCustomTimeChange"
                   :error="customTimeError"
                   :error-message="customTimeErrorMessage"
+                  class="datetime-input"
                 >
                   <template v-slot:prepend>
-                    <q-icon name="stop" />
+                    <q-icon name="event" color="primary" />
+                  </template>
+                  <template v-slot:append>
+                    <q-icon name="schedule" class="cursor-pointer text-grey-6" @click="setFromToNow(0)">
+                      <q-tooltip>Set to now</q-tooltip>
+                    </q-icon>
                   </template>
                 </q-input>
               </div>
             </div>
 
-            <div class="row q-mt-sm">
+            <!-- Duration Display and Quick Adjustments -->
+            <div class="datetime-controls q-mt-md">
+              <div class="row items-center q-gutter-sm">
+                <div class="col">
+                  <!-- Duration Display -->
+                  <div v-if="isValidCustomRange" class="duration-display">
+                    <q-chip
+                      icon="schedule"
+                      color="blue"
+                      text-color="white"
+                      size="sm"
+                    >
+                      Duration: {{ formatCustomDuration() }}
+                    </q-chip>
+                    <q-chip
+                      v-if="estimatedCustomPoints > 0"
+                      icon="scatter_plot"
+                      :color="estimatedCustomPoints > maxPointsLimit ? 'red' : 'green'"
+                      text-color="white"
+                      size="sm"
+                      class="q-ml-xs"
+                    >
+                      ~{{ estimatedCustomPoints }} points
+                    </q-chip>
+                  </div>
+                  <div v-else-if="customFromTime || customToTime" class="duration-display">
+                    <q-chip icon="warning" color="orange" text-color="white" size="sm">
+                      {{ customTimeError ? customTimeErrorMessage : 'Select both dates' }}
+                    </q-chip>
+                  </div>
+                </div>
+
+                <div class="col-auto">
+                  <!-- Quick Time Adjustments -->
+                  <q-btn-group flat>
+                    <q-btn
+                      flat
+                      icon="remove"
+                      @click="adjustTimeRange(-1)"
+                      size="sm"
+                      color="grey-7"
+                    >
+                      <q-tooltip>Extend start time by 1 hour</q-tooltip>
+                    </q-btn>
+                    <q-btn
+                      flat
+                      icon="add"
+                      @click="adjustTimeRange(1)"
+                      size="sm"
+                      color="grey-7"
+                    >
+                      <q-tooltip>Extend end time by 1 hour</q-tooltip>
+                    </q-btn>
+                  </q-btn-group>
+                </div>
+              </div>
+            </div>
+
+            <!-- Apply Custom Range Button -->
+            <div class="q-mt-md">
               <q-btn
                 color="primary"
-                label="Apply Custom Range"
+                label="Apply Custom Time Range"
+                icon="check"
                 @click="applyCustomTimeRange"
                 :disable="!isValidCustomRange"
                 :loading="isApplyingCustomRange"
-                size="sm"
                 class="full-width"
+                unelevated
               />
             </div>
           </div>
@@ -340,8 +432,8 @@ const isRefreshing = ref(false)
 const selectedTimeRange = ref('last_1h')
 const selectedWindowPeriod = ref('auto')
 const selectedRefreshRate = ref('manual')
-const customStartTime = ref('')
-const customEndTime = ref('')
+const customFromTime = ref('')
+const customToTime = ref('')
 
 // Validation State
 const customTimeError = ref(false)
@@ -462,12 +554,29 @@ const maxPointsLimit = computed(() => {
  * Validate custom time range
  */
 const isValidCustomRange = computed(() => {
-  if (!customStartTime.value || !customEndTime.value) return false
+  if (!customFromTime.value || !customToTime.value) return false
 
-  const start = new Date(customStartTime.value)
-  const end = new Date(customEndTime.value)
+  const start = new Date(customFromTime.value)
+  const end = new Date(customToTime.value)
 
   return start < end && start <= new Date() && end <= new Date()
+})
+
+/**
+ * Estimated points for custom range
+ */
+const estimatedCustomPoints = computed(() => {
+  if (!isValidCustomRange.value) return 0
+
+  const start = new Date(customFromTime.value)
+  const end = new Date(customToTime.value)
+  const durationMs = end - start
+  const durationSeconds = durationMs / 1000
+
+  // Use current window period or default to 1 minute for estimation
+  const windowSeconds = windowInfo.value?.windowSeconds || 60
+
+  return Math.ceil(durationSeconds / windowSeconds)
 })
 
 // ==================== WATCHERS ====================
@@ -587,10 +696,8 @@ function syncFromGlobalState() {
   selectedWindowPeriod.value = globalTime.timeState.windowPeriod || 'auto'
   selectedRefreshRate.value = globalTime.timeState.refreshRate || 'manual'
 
-  // Sync custom time inputs if in custom mode
-  if (selectedTimeRange.value === 'custom') {
-    updateCustomTimeInputs()
-  }
+  // Sync custom time inputs from global state
+  updateCustomTimeInputs()
 }
 
 /**
@@ -599,8 +706,14 @@ function syncFromGlobalState() {
 function updateCustomTimeInputs() {
   if (globalTime.timeState.timeStart && globalTime.timeState.timeEnd) {
     // Convert ISO strings to datetime-local format
-    customStartTime.value = convertToLocalDateTime(globalTime.timeState.timeStart)
-    customEndTime.value = convertToLocalDateTime(globalTime.timeState.timeEnd)
+    customFromTime.value = convertToLocalDateTime(globalTime.timeState.timeStart)
+    customToTime.value = convertToLocalDateTime(globalTime.timeState.timeEnd)
+  } else {
+    // Set reasonable defaults
+    const now = new Date()
+    const oneHourAgo = new Date(now - 60 * 60 * 1000)
+    customFromTime.value = convertToLocalDateTime(oneHourAgo.toISOString())
+    customToTime.value = convertToLocalDateTime(now.toISOString())
   }
 }
 
@@ -619,31 +732,30 @@ function convertToLocalDateTime(isoString) {
 }
 
 /**
- * Handle time range preset change
+ * Set quick range preset
  */
-async function onTimeRangeChange(newRange) {
+async function setQuickRange(rangeType) {
   try {
-    console.log('🕒 Time range changed to:', newRange)
+    console.log('⚡ Quick range selected:', rangeType)
 
+    selectedTimeRange.value = rangeType
     clearCustomTimeErrors()
 
-    if (newRange === 'custom') {
-      // Initialize custom inputs with current range
-      updateCustomTimeInputs()
-    } else {
-      // Apply preset range
-      isCalculatingWindow.value = true
-      await globalTime.setTimeRange(newRange)
+    // Apply preset range
+    isCalculatingWindow.value = true
+    await globalTime.setTimeRange(rangeType)
 
-      $q.notify({
-        type: 'positive',
-        message: `Time range set to ${getTimeRangeLabel(newRange)}`,
-        timeout: 2000
-      })
-    }
+    // Update custom inputs to reflect the new range
+    updateCustomTimeInputs()
+
+    $q.notify({
+      type: 'positive',
+      message: `Time range set to ${getTimeRangeLabel(rangeType)}`,
+      timeout: 2000
+    })
 
   } catch (error) {
-    console.error('❌ Failed to change time range:', error)
+    console.error('❌ Failed to set quick range:', error)
 
     $q.notify({
       type: 'negative',
@@ -654,10 +766,18 @@ async function onTimeRangeChange(newRange) {
 }
 
 /**
+ * Handle time range preset change (legacy dropdown support)
+ */
+async function onTimeRangeChange(newRange) {
+  await setQuickRange(newRange)
+}
+
+/**
  * Handle custom time change (validation only)
  */
 function onCustomTimeChange() {
   validateCustomTime()
+  selectedTimeRange.value = 'custom'
 }
 
 /**
@@ -673,15 +793,16 @@ async function applyCustomTimeRange() {
     isApplyingCustomRange.value = true
 
     console.log('🕒 Applying custom time range:', {
-      start: customStartTime.value,
-      end: customEndTime.value
+      from: customFromTime.value,
+      to: customToTime.value
     })
 
     // Convert to ISO strings
-    const startISO = new Date(customStartTime.value).toISOString()
-    const endISO = new Date(customEndTime.value).toISOString()
+    const startISO = new Date(customFromTime.value).toISOString()
+    const endISO = new Date(customToTime.value).toISOString()
 
     await globalTime.setTimeRange('custom', startISO, endISO)
+    selectedTimeRange.value = 'custom'
 
     $q.notify({
       type: 'positive',
@@ -708,13 +829,13 @@ async function applyCustomTimeRange() {
  * Validate custom time inputs
  */
 function validateCustomTime() {
-  if (!customStartTime.value || !customEndTime.value) {
+  if (!customFromTime.value || !customToTime.value) {
     setCustomTimeError('Both start and end times are required')
     return false
   }
 
-  const start = new Date(customStartTime.value)
-  const end = new Date(customEndTime.value)
+  const start = new Date(customFromTime.value)
+  const end = new Date(customToTime.value)
   const now = new Date()
 
   if (start >= end) {
@@ -756,6 +877,76 @@ function setCustomTimeError(message) {
 function clearCustomTimeErrors() {
   customTimeError.value = false
   customTimeErrorMessage.value = ''
+}
+
+/**
+ * Format custom duration for display
+ */
+function formatCustomDuration() {
+  if (!isValidCustomRange.value) return 'Invalid range'
+
+  const start = new Date(customFromTime.value)
+  const end = new Date(customToTime.value)
+  const diffMs = end - start
+
+  const days = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+  const hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
+  const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))
+
+  if (days > 0) {
+    return `${days}d ${hours}h ${minutes}m`
+  } else if (hours > 0) {
+    return `${hours}h ${minutes}m`
+  } else {
+    return `${minutes}m`
+  }
+}
+
+/**
+ * Set From/To time relative to now
+ */
+function setFromToNow(hoursOffset) {
+  const now = new Date()
+  const targetTime = new Date(now.getTime() + (hoursOffset * 60 * 60 * 1000))
+
+  if (hoursOffset <= 0) {
+    // Setting "From" time
+    customFromTime.value = convertToLocalDateTime(targetTime.toISOString())
+  } else {
+    // Setting "To" time
+    customToTime.value = convertToLocalDateTime(targetTime.toISOString())
+  }
+
+  onCustomTimeChange()
+}
+
+/**
+ * Adjust time range by extending start or end
+ */
+function adjustTimeRange(direction) {
+  if (!customFromTime.value || !customToTime.value) {
+    // Initialize with reasonable defaults
+    const now = new Date()
+    const oneHourAgo = new Date(now - 60 * 60 * 1000)
+    customFromTime.value = convertToLocalDateTime(oneHourAgo.toISOString())
+    customToTime.value = convertToLocalDateTime(now.toISOString())
+    return
+  }
+
+  if (direction < 0) {
+    // Extend start time backwards (make range longer)
+    const currentStart = new Date(customFromTime.value)
+    const newStart = new Date(currentStart.getTime() - (60 * 60 * 1000)) // 1 hour back
+    customFromTime.value = convertToLocalDateTime(newStart.toISOString())
+  } else {
+    // Extend end time forwards (make range longer)
+    const currentEnd = new Date(customToTime.value)
+    const now = new Date()
+    const newEnd = new Date(Math.min(currentEnd.getTime() + (60 * 60 * 1000), now.getTime())) // 1 hour forward, but not past now
+    customToTime.value = convertToLocalDateTime(newEnd.toISOString())
+  }
+
+  onCustomTimeChange()
 }
 
 /**
@@ -1033,6 +1224,7 @@ window.addEventListener('globalTimeChanged', (event) => {
   border: 1px solid #e0e0e0;
   max-height: 90vh;
   overflow-y: auto;
+  color: #424242;
 }
 
 .custom-time-inputs {
@@ -1041,6 +1233,231 @@ window.addEventListener('globalTimeChanged', (event) => {
   padding: 12px;
   border: 1px solid #e0e0e0;
   margin-top: 8px;
+}
+
+/* Enhanced Custom DateTime Styles */
+.quick-presets {
+  margin-bottom: 16px;
+}
+
+.quick-presets .q-btn-group {
+  width: 100%;
+  border-radius: 6px;
+  overflow: hidden;
+  background: white;
+}
+
+.quick-presets .q-btn {
+  flex: 1;
+  border-radius: 0;
+  transition: all 0.2s ease;
+  color: #666;
+  background: white;
+  border: 1px solid #e0e0e0;
+}
+
+.quick-presets .q-btn:hover {
+  background: rgba(33, 150, 243, 0.1);
+  color: #2196f3;
+}
+
+.quick-presets .q-btn--active {
+  background: #2196f3;
+  color: white;
+}
+
+.custom-datetime-primary {
+  background: white;
+  border: 2px solid #e3f2fd;
+  border-radius: 12px;
+  padding: 16px;
+  margin-top: 8px;
+}
+
+.datetime-input {
+  margin-bottom: 8px;
+}
+
+.datetime-input .q-field__control {
+  border-radius: 8px;
+  min-height: 48px;
+  background: white;
+  border: 1px solid #e0e0e0;
+}
+
+.datetime-input .q-field__native {
+  font-size: 14px;
+  font-weight: 500;
+  color: #424242;
+}
+
+.datetime-input .q-field__label {
+  color: #666;
+}
+
+.datetime-controls {
+  border-top: 1px solid #f0f0f0;
+  padding-top: 12px;
+}
+
+.duration-display {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.duration-display .q-chip {
+  font-weight: 500;
+}
+
+/* Time adjustment buttons */
+.time-adjustments .q-btn {
+  min-width: 36px;
+  min-height: 36px;
+  background: white;
+  border: 1px solid #e0e0e0;
+  color: #666;
+}
+
+.time-adjustments .q-btn:hover {
+  background: #f5f5f5;
+  color: #2196f3;
+}
+
+/* Input focus enhancements */
+.datetime-input .q-field--focused .q-field__control {
+  border-color: #2196f3;
+  box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.2);
+}
+
+/* Error state enhancements */
+.datetime-input .q-field--error .q-field__control {
+  border-color: #f44336;
+  box-shadow: 0 0 0 2px rgba(244, 67, 54, 0.2);
+}
+
+/* Success state for valid ranges */
+.datetime-input.valid-range .q-field__control {
+  border-color: #4caf50;
+  box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.2);
+}
+
+/* Quick preset active state */
+.quick-presets .q-btn[aria-pressed="true"] {
+  background: #2196f3;
+  color: white;
+}
+
+/* Datetime input icons */
+.datetime-input .q-icon {
+  transition: color 0.2s ease;
+  color: #666;
+}
+
+.datetime-input:hover .q-icon {
+  color: #2196f3;
+}
+
+/* Apply button enhancements */
+.custom-datetime-primary .q-btn {
+  height: 44px;
+  font-weight: 600;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  background: #2196f3;
+  color: white;
+}
+
+.custom-datetime-primary .q-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(33, 150, 243, 0.3);
+  background: #1976d2;
+}
+
+.custom-datetime-primary .q-btn:disabled {
+  transform: none;
+  box-shadow: none;
+  background: #e0e0e0;
+  color: #999;
+}
+
+/* Status display with white theme */
+.status-display {
+  background: #fafafa;
+  border-radius: 6px;
+  padding: 8px;
+  color: #666;
+}
+
+/* Action buttons white theme */
+.action-buttons .q-btn {
+  background: white;
+  border: 1px solid #e0e0e0;
+  color: #666;
+}
+
+.action-buttons .q-btn:hover {
+  background: #f5f5f5;
+  color: #2196f3;
+}
+
+.action-buttons .q-btn--primary {
+  background: #2196f3;
+  color: white;
+  border-color: #2196f3;
+}
+
+.action-buttons .q-btn--primary:hover {
+  background: #1976d2;
+  border-color: #1976d2;
+}
+
+/* Window info chips white theme */
+.window-info .q-chip {
+  background: white;
+  border: 1px solid #e0e0e0;
+  color: #666;
+}
+
+.auto-refresh-status .q-chip {
+  background: white;
+  border: 1px solid #e0e0e0;
+  color: #666;
+}
+
+/* Ensure all text is visible on white background */
+.time-picker-panel .text-subtitle2 {
+  color: #424242;
+}
+
+.time-picker-panel .text-caption {
+  color: #666;
+}
+
+.time-picker-panel .text-grey-7 {
+  color: #666;
+}
+
+/* Responsive enhancements */
+@media (max-width: 640px) {
+  .custom-datetime-primary {
+    padding: 12px;
+  }
+
+  .datetime-input .q-field__control {
+    min-height: 44px;
+  }
+
+  .quick-presets .q-btn {
+    font-size: 12px;
+    padding: 8px 4px;
+  }
+
+  .duration-display {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
 
 .window-info {
@@ -1287,37 +1704,5 @@ input[type="datetime-local"] {
   opacity: 0.6;
 }
 
-/* Dark mode support (if enabled) */
-@media (prefers-color-scheme: dark) {
-  .trigger-btn {
-    background: #424242;
-    border-color: #616161;
-    color: white;
-  }
 
-  .time-picker-panel {
-    background: #424242;
-    border-color: #616161;
-    color: white;
-  }
-
-  .custom-time-inputs {
-    background: #383838;
-    border-color: #616161;
-  }
-
-  .status-display {
-    background: #383838;
-  }
-
-  :deep(.q-field__control) {
-    background: #383838;
-    border-color: #616161;
-    color: white;
-  }
-
-  :deep(.q-select__dropdown-icon) {
-    color: white;
-  }
-}
 </style>

@@ -201,32 +201,175 @@ def get_page_layout_data(db: Session, page_id: str) -> Dict:
 
 # ---------- Bulk Operations ----------
 
+
 def get_complete_page_data(db: Session, page_id: str) -> Dict:
-    """Get complete page data including widgets and time settings"""
-    from services.page_crud import get_page_by_id
-    
-    page = get_page_by_id(db, page_id)
-    if not page:
-        return None
-    
-    widgets = widgets_to_dict_list(get_widgets_by_page(db, page_id))
-    time_settings = time_settings_to_dict(get_page_time_settings(db, page_id))
-    layout_data = get_page_layout_data(db, page_id)
-    
-    return {
-        "page": {
+    """Get complete page data including widgets and time settings - FIXED"""
+    try:
+        from services.page_crud import get_page_by_id
+        
+        # Get page
+        page = get_page_by_id(db, page_id)
+        if not page:
+            print(f"❌ Page not found: {page_id}")
+            return None
+        
+        print(f"✅ Page found: {page.page_id}")
+        
+        # Get widgets with error handling
+        try:
+            widgets = get_widgets_by_page(db, page_id)
+            widgets_dict = widgets_to_dict_list(widgets)
+            print(f"✅ Widgets loaded: {len(widgets_dict)} widgets")
+        except Exception as e:
+            print(f"❌ Error loading widgets: {str(e)}")
+            widgets_dict = []
+        
+        # Get time settings with error handling
+        try:
+            time_settings_obj = get_page_time_settings(db, page_id)
+            time_settings = time_settings_to_dict(time_settings_obj)
+            print(f"✅ Time settings loaded: {time_settings is not None}")
+        except Exception as e:
+            print(f"❌ Error loading time settings: {str(e)}")
+            time_settings = None
+        
+        # Get layout data with error handling
+        try:
+            layout_data = get_page_layout_data(db, page_id)
+            print(f"✅ Layout data loaded: {layout_data is not None}")
+        except Exception as e:
+            print(f"❌ Error loading layout data: {str(e)}")
+            layout_data = {}
+        
+        # Ensure datetime objects are serializable
+        page_data = {
             "page_id": page.page_id,
             "page_name": page.page_name,
             "user_name": page.user_name,
             "page_route": page.page_route,
-            "created_at": page.created_at,
-            "updated_at": page.updated_at
-        },
-        "widgets": widgets,
-        "time_settings": time_settings,
-        "layout_data": layout_data
-    }
+            "created_at": page.created_at.isoformat() if page.created_at else None,
+            "updated_at": page.updated_at.isoformat() if page.updated_at else None
+        }
+        
+        result = {
+            "page": page_data,
+            "widgets": widgets_dict,
+            "time_settings": time_settings,
+            "layout_data": layout_data
+        }
+        
+        print(f"✅ Complete page data assembled successfully")
+        return result
+        
+    except Exception as e:
+        print(f"❌ Error in get_complete_page_data: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return None
 
+
+# ALSO ADD ERROR HANDLING TO HELPER FUNCTIONS
+
+def get_page_layout_data(db: Session, page_id: str) -> Dict:
+    """Get page layout data - ENHANCED WITH ERROR HANDLING"""
+    try:
+        from services.page_crud import get_page_by_id
+        
+        page = get_page_by_id(db, page_id)
+        if not page:
+            print(f"❌ Page not found for layout data: {page_id}")
+            return {}
+        
+        if not page.layout_data:
+            print(f"📝 No layout data found for page: {page_id}")
+            return {}
+        
+        try:
+            layout_data = json.loads(page.layout_data)
+            print(f"✅ Layout data parsed successfully")
+            return layout_data
+        except json.JSONDecodeError as e:
+            print(f"❌ JSON decode error in layout data: {str(e)}")
+            return {}
+            
+    except Exception as e:
+        print(f"❌ Error getting page layout data: {str(e)}")
+        return {}
+
+
+def widgets_to_dict_list(widgets: List[Widget]) -> List[Dict]:
+    """Convert list of widgets to list of dictionaries - ENHANCED ERROR HANDLING"""
+    try:
+        result = []
+        for widget in widgets:
+            try:
+                widget_dict = widget_to_dict(widget)
+                if widget_dict:
+                    result.append(widget_dict)
+                    print(f"✅ Widget converted: {widget.widget_id}")
+                else:
+                    print(f"⚠️ Widget conversion returned None: {widget.widget_id}")
+            except Exception as e:
+                print(f"❌ Error converting widget {widget.widget_id}: {str(e)}")
+                continue
+        
+        print(f"✅ Converted {len(result)} widgets to dict list")
+        return result
+        
+    except Exception as e:
+        print(f"❌ Error in widgets_to_dict_list: {str(e)}")
+        return []
+
+
+def widget_to_dict(widget: Widget) -> Dict:
+    """Convert widget model to dictionary with JSON parsing - ENHANCED ERROR HANDLING"""
+    try:
+        if not widget:
+            return None
+        
+        # Safely parse JSON fields
+        def safe_json_parse(json_str, default=None):
+            if not json_str:
+                return default if default is not None else {}
+            try:
+                return json.loads(json_str)
+            except json.JSONDecodeError:
+                return default if default is not None else {}
+        
+        result = {
+            "widget_id": widget.widget_id,
+            "page_id": widget.page_id,
+            "widget_type": widget.widget_type or "line_chart",
+            "widget_label": widget.widget_label or "Untitled Widget",
+            "equipment_ids": safe_json_parse(widget.equipment_ids, []),
+            "signal_ids": safe_json_parse(widget.signal_ids, []),
+            "filter_selections": safe_json_parse(widget.filter_selections, {}),
+            "position_data": safe_json_parse(widget.position_data, {}),
+            "styling_config": safe_json_parse(widget.styling_config, {}),
+            "created_at": widget.created_at.isoformat() if widget.created_at else None,
+            "updated_at": widget.updated_at.isoformat() if widget.updated_at else None
+        }
+        
+        print(f"✅ Widget {widget.widget_id} converted to dict successfully")
+        return result
+        
+    except Exception as e:
+        print(f"❌ Error converting widget to dict: {str(e)}")
+        # Return a basic structure to prevent complete failure
+        return {
+            "widget_id": getattr(widget, 'widget_id', 'unknown'),
+            "page_id": getattr(widget, 'page_id', ''),
+            "widget_type": "line_chart",
+            "widget_label": "Error Loading Widget",
+            "equipment_ids": [],
+            "signal_ids": [],
+            "filter_selections": {},
+            "position_data": {},
+            "styling_config": {},
+            "created_at": None,
+            "updated_at": None,
+            "error": str(e)
+        }
 def save_complete_page_data(db: Session, page_id: str, widgets_data: List[Dict],
                           time_settings_data: Dict = None, layout_data: Dict = None) -> bool:
     """Save complete page data in single transaction"""

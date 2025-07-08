@@ -239,17 +239,226 @@ export const pageAPI = {
 }
 
 // Query API
-export const queryAPI = {
-  queryData(filters) {
-    return api.post('/query', filters)
+export const widgetLayoutAPI = {
+  /**
+   * Save complete page layout with widgets and time settings
+   * Formats data correctly for backend PageLayoutData model
+   */
+  async savePageLayout(pageId, widgets, gridConfig = null, timeSettings = null) {
+    try {
+      console.log('🔄 Saving page layout for page:', pageId)
+      console.log('📊 Widgets to save:', widgets.length)
+
+      // Format data according to PageLayoutData model
+      const layoutData = {
+        // ✅ Correct key: widgets_data (not widgets)
+        widgets_data: widgets.map(widget => ({
+          // Widget metadata
+          widget_type: widget.widget_type || 'line_chart',
+          widget_label: widget.widget_label || 'Untitled Widget',
+          equipment_ids: widget.equipment_ids || [],
+          signal_ids: widget.signal_ids || [],
+          filter_selections: widget.filter_selections || {},
+          styling_config: widget.styling_config || {},
+
+          // Position data from GridStack
+          position_data: {
+            x: widget.x || 0,
+            y: widget.y || 0,
+            w: widget.w || 6,
+            h: widget.h || 4
+          }
+        })),
+
+        // ✅ Layout configuration
+        layout_data: {
+          grid_config: gridConfig || {
+            columns: 12,
+            cellHeight: 100,
+            margin: 10
+          },
+          timestamp: new Date().toISOString(),
+          version: "1.0"
+        },
+
+        // ✅ Time settings (optional)
+        time_settings_data: timeSettings
+      }
+
+      console.log('📤 Sending layout data:', layoutData)
+
+      const response = await api.put(`/widgets/pages/${pageId}/layout`, layoutData)
+
+      console.log('✅ Layout saved successfully')
+      return response.data
+
+    } catch (error) {
+      console.error('❌ Failed to save layout:', error)
+
+      // Enhanced error handling
+      if (error.response?.status === 422) {
+        console.error('💡 Validation Error - Check data structure:', error.response.data)
+      }
+
+      throw error
+    }
   },
 
-  saveLayout(layoutData, pageId) {
-    return api.post('/save-layout', layoutData, {
-      params: { page_id: pageId }
+  /**
+   * Load complete page layout
+   */
+  async loadPageLayout(pageId) {
+    try {
+      console.log('📥 Loading page layout for page:', pageId)
+
+      const response = await api.get(`/widgets/pages/${pageId}/layout`)
+
+      console.log('✅ Layout loaded successfully')
+      return response.data
+
+    } catch (error) {
+      if (error.response?.status === 404) {
+        console.log('📝 No layout found for page:', pageId)
+        return null
+      }
+
+      console.error('❌ Failed to load layout:', error)
+      throw error
+    }
+  },
+
+  /**
+   * Convert GridStack layout to widget format
+   * Helper function to transform GridStack data
+   */
+  convertGridStackToWidgets(gridStackNodes, widgetDataMap = {}) {
+    return gridStackNodes.map(node => {
+      const widgetId = node.el?.getAttribute('data-id') || node.id
+      const widgetData = widgetDataMap[widgetId] || {}
+
+      return {
+        // Widget identity
+        widget_id: widgetData.widget_id || widgetId,
+
+        // GridStack position
+        x: node.x,
+        y: node.y,
+        w: node.w,
+        h: node.h,
+        locked: node.locked || false,
+
+        // Widget metadata
+        widget_type: widgetData.widget_type || 'line_chart',
+        widget_label: widgetData.widget_label || `Widget ${widgetId}`,
+        equipment_ids: widgetData.equipment_ids || [],
+        signal_ids: widgetData.signal_ids || [],
+        filter_selections: widgetData.filter_selections || {},
+        styling_config: widgetData.styling_config || {},
+
+        // Timestamps
+        created_at: widgetData.created_at,
+        updated_at: widgetData.updated_at
+      }
     })
+  },
+
+  /**
+   * Convert backend widget format to GridStack format
+   * Helper function for loading layouts
+   */
+  convertWidgetsToGridStack(widgets) {
+    return widgets.map(widget => ({
+      id: widget.widget_id,
+      x: widget.position_data?.x || widget.x || 0,
+      y: widget.position_data?.y || widget.y || 0,
+      w: widget.position_data?.w || widget.w || 6,
+      h: widget.position_data?.h || widget.h || 4,
+      locked: widget.locked || false,
+      content: widget
+    }))
   }
 }
+
+// Enhanced Widget API
+export const widgetAPI = {
+  /**
+   * Create widget via wizard
+   */
+  async createWidget(widgetData) {
+    try {
+      console.log('🔧 Creating widget:', widgetData)
+
+      const response = await api.post('/widgets/', widgetData)
+
+      console.log('✅ Widget created:', response.data)
+      return response.data
+
+    } catch (error) {
+      console.error('❌ Failed to create widget:', error)
+      throw error
+    }
+  },
+
+  /**
+   * Get widget data for chart display
+   */
+  async getWidgetData(widgetId, timeRange) {
+    try {
+      const response = await api.post(`/widgets/${widgetId}/data`, {
+        time_start: timeRange.start,
+        time_end: timeRange.end,
+        time_range_type: timeRange.range_type || 'custom'
+      })
+
+      return response.data
+    } catch (error) {
+      console.error('❌ Failed to get widget data:', error)
+      throw error
+    }
+  },
+
+  /**
+   * Get widgets for page
+   */
+  async getPageWidgets(pageId) {
+    try {
+      const response = await api.get(`/widgets/page/${pageId}`)
+      return response.data
+    } catch (error) {
+      console.error('❌ Failed to get page widgets:', error)
+      throw error
+    }
+  },
+
+  /**
+   * Update widget
+   */
+  async updateWidget(widgetId, updateData) {
+    try {
+      const response = await api.put(`/widgets/${widgetId}`, updateData)
+      return response.data
+    } catch (error) {
+      console.error('❌ Failed to update widget:', error)
+      throw error
+    }
+  },
+
+  /**
+   * Delete widget
+   */
+  async deleteWidget(widgetId) {
+    try {
+      await api.delete(`/widgets/${widgetId}`)
+      console.log('✅ Widget deleted:', widgetId)
+    } catch (error) {
+      console.error('❌ Failed to delete widget:', error)
+      throw error
+    }
+  }
+}
+
+// Export all APIs (add to your existing exports)
+
 
 // Export default api instance for custom calls
 export default api

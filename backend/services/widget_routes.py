@@ -248,11 +248,48 @@ class LayoutRoutes:
 
     @widget_router.get("/pages/{page_id}/layout")
     def get_complete_layout(self, page_id: str):
-        """Get complete page layout with widgets and time settings"""
-        layout_data = widget_crud.get_complete_page_data(self.db, page_id)
-        if not layout_data:
-            raise HTTPException(status_code=404, detail="Page not found")
-        return layout_data
+        """Get complete page layout with widgets and time settings - FIXED"""
+        try:
+            # Validate page exists first
+            from services.page_crud import get_page_by_id
+            page = get_page_by_id(self.db, page_id)
+            if not page:
+                raise HTTPException(status_code=404, detail="Page not found")
+            
+            # Get complete page data with error handling
+            layout_data = widget_crud.get_complete_page_data(self.db, page_id)
+            
+            if layout_data is None:
+                # If no data, return empty structure
+                return {
+                    "page": {
+                        "page_id": page.page_id,
+                        "page_name": page.page_name,
+                        "user_name": page.user_name,
+                        "page_route": page.page_route,
+                        "created_at": page.created_at.isoformat() if page.created_at else None,
+                        "updated_at": page.updated_at.isoformat() if page.updated_at else None
+                    },
+                    "widgets": [],
+                    "time_settings": None,
+                    "layout_data": {}
+                }
+            
+            return layout_data
+            
+        except Exception as e:
+            # Log the error for debugging
+            print(f"❌ Error in get_complete_layout: {str(e)}")
+            print(f"❌ Error type: {type(e)}")
+            import traceback
+            traceback.print_exc()
+            
+            # Return 500 with detailed error
+            raise HTTPException(
+                status_code=500, 
+                detail=f"Failed to load layout: {str(e)}"
+            )
+
 
 # ---------- Metadata Support Routes (for Widget Wizard) ----------
 
