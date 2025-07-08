@@ -1,4 +1,4 @@
-📋 COMPLETE DEVELOPMENT PLAN & STATUS REPORT - Phase 6.2.1 Complete
+📋 COMPLETE PROJECT STATUS & DEVELOPMENT PLAN
 🎯 PROJECT OVERVIEW
 System: Metadata Management System for Time-Series Data with Advanced Widget System
 Architecture: FastAPI (Python) + Vue3/Quasar 2 + SQLite3 MetaDB
@@ -7,7 +7,7 @@ Purpose: Create metadata-driven widgets with auto query generation, global time 
 ✅ COMPLETED PHASES (Production Ready)
 PHASE 1: Database Connection Management ✅ COMPLETE
 Status: Production Ready
-Time Completed: Phase 1.1-1.3
+Completion Date: Phase 1.1-1.3
 Backend Files:
 
 models/datasource_models.py - Database models for connections
@@ -28,7 +28,7 @@ components/ConnectionList.vue - Connection list/table component
 Features: SQLite3, Parquet, InfluxDB connection management with schema discovery
 PHASE 2: Advanced Drag & Drop Metadata Mapping ✅ COMPLETE
 Status: Production Ready
-Time Completed: Phase 2.1-2.6
+Completion Date: Phase 2.1-2.6
 Frontend Files:
 
 pages/MetadataMappingPage.vue - Main orchestrator with signal value enhancement
@@ -61,11 +61,9 @@ Partition column extraction as filters (dcu, equipment)
 Timeline partition ignoring (year, month, day)
 Performance optimization for large datasets
 
-
-✅ CURRENT PHASE: WIDGET SYSTEM WITH WINDOW PERIOD OPTIMIZATION
 PHASE 6.1: Database Foundation ✅ COMPLETE
 Status: Production Ready
-Time Completed: January 2025
+Completion Date: January 2025
 Backend Files Created/Updated:
 
 models/widget_models.py - Widget and PageTimeSettings models
@@ -108,7 +106,7 @@ CREATE TABLE page_time_settings (
 );
 PHASE 6.2: Global Time Management Backend ✅ COMPLETE
 Status: Production Ready with Window Period Enhancement
-Time Completed: January 2025
+Completion Date: January 2025
 Backend Files Created/Updated:
 
 services/widget_routes.py - Complete widget management APIs (50+ endpoints)
@@ -159,182 +157,137 @@ Smart Auto Calculation: 2 days + auto → 28.8min window = 100 points
 Time Bucket Aggregation: Uses time_bucket() with AVG for all signals
 Performance Optimization: Automatic window calculation to prevent overload
 
-Example Auto Query Generation:
-sql-- Input: 2 days, auto window, voltage+current signals
-SELECT 
-  time_bucket(INTERVAL '1728 seconds', CAST(t_sampling_time AS TIMESTAMP), TIMESTAMP '2025-01-01T00:00:00') AS timestamp,
-  AVG(voltage) AS "Voltage Signal",
-  AVG(current) AS "Current Signal"
-FROM t_pump_equipment
-WHERE t_sampling_time >= '2025-01-01T00:00:00' 
-  AND t_sampling_time <= '2025-01-03T00:00:00'
-  AND dcu = '1' AND n_rack = '2'
-GROUP BY 1
-ORDER BY timestamp ASC
+PHASE 6.3.1: Global Time Management Foundation ✅ COMPLETE
+Status: Production Ready
+Completion Date: Current Session
+Frontend Files Created:
+
+src/composables/useGlobalTime.js - Complete global time state management
+src/utils/chartUtils.js - Chart.js utilities and helpers
+
+Features:
+
+Global State Management: Reactive time ranges, window periods, refresh rates
+Backend Integration: Complete API integration with fallback mechanisms
+Auto-Refresh System: Configurable auto-refresh with timer management
+Window Period Optimization: Auto-calculation and manual selection
+Persistence: localStorage for user preferences
+Event System: Custom events for widget synchronization
+Error Handling: Robust fallback mechanisms when backend is unavailable
+
+PHASE 6.3.2: Global Time Picker Component ✅ COMPLETE
+Status: Production Ready
+Completion Date: Current Session
+Frontend Files Created:
+
+src/components/GlobalTimePicker.vue - Complete time management UI component
+
+Features:
+
+Compact Trigger Button: Shows current time range, window period, auto-refresh status
+Expandable Control Panel: Full-featured time management interface
+Time Range Presets: Last 15min, 1h, 6h, 24h, custom options
+Custom Date/Time Pickers: Manual start/end time selection with validation
+Window Period Selection: Auto-calculation and manual options (1sec to 24h)
+Refresh Rate Control: Manual, 5m, 15m, 1h with auto-refresh countdown
+Manual Refresh Button: Immediate refresh trigger for all widgets
+Professional UI: Responsive, accessible, with comprehensive error handling
+
+
+🚧 CURRENT STATUS
+✅ TESTED & VERIFIED:
+
+Phase 6.3.1: Global time management composable and chart utilities
+Phase 6.3.2: Global time picker component with full UI integration
+Backend Integration: All 50+ API endpoints working correctly
+Database Foundation: Complete widget system database schema
+Performance: Window period optimization working as designed
+
+🔧 MINOR FIX APPLIED:
+
+Fixed readonly import in useGlobalTime.js
+Fixed API parameter format for time range calculation (query params vs body)
+
 
 🚧 PENDING PHASES (Next Development Steps)
-PHASE 6.3: Enhanced Widget Components ⭐ NEXT TO DEVELOP
+PHASE 6.3.3: Widget Wizard Component ⭐ NEXT TO DEVELOP
 Priority: Critical - Core Frontend Implementation
-Estimated Time: 4-5 hours
+Estimated Time: 2-3 hours
 Status: Ready to Start (Backend Complete)
 Frontend Files to Create:
 
-components/GlobalTimePicker.vue - Top-right time/refresh/window controls
-components/WidgetWizard.vue - Multi-step metadata selection wizard
-components/ZoomableLineChart.vue - Chart.js with zoom/pan/sync capabilities
-composables/useGlobalTime.js - Global time state management
-composables/useWidgetSync.js - Widget synchronization across page
-utils/chartUtils.js - Chart utilities and helpers
+src/components/WidgetWizard.vue - Multi-step metadata selection wizard
 
 Features to Implement:
 
-Global Time Picker Component:
-
-Time range selector (Last 15min, 1h, 6h, 24h, custom)
-Refresh rate dropdown (Manual, 5m, 15m, 1h)
-Window period dropdown (1sec, 5m, 1m, 1h, auto)
-Manual refresh button
-Top-right corner positioning
-
-
-Widget Wizard (Multi-step):
-
-Step 1: Widget Type (Line Chart, Bar Chart, Pie Chart, Table)
-Step 2: Equipment Selection (multi-select dropdown)
+Step 1: Widget Type Selection (Line Chart, Bar Chart, Pie Chart, Table)
+Step 2: Equipment Selection (multi-select dropdown from metadata API)
 Step 3: Signal Selection (multi-select, grouped by equipment)
 Step 4: Filter Selection (user choice from equipment filters)
 Step 5: Widget Styling (colors, line styles, chart options)
 Step 6: Widget Label & Preview
 Step 7: Create & Position in GridStack
 
+API Integration Points:
 
-Zoomable Chart Component:
+GET /widgets/metadata/equipments
+GET /widgets/metadata/equipment/{equipment_id}/signals
+POST /widgets/ (create widget)
 
-Chart.js with chartjs-plugin-zoom
-Mouse wheel zoom, pan capabilities
-Multi-signal support with different colors
-Time axis synchronization across all widgets
-Crosshair on hover (future: sync across widgets)
-Legend with toggle visibility
-Error handling for data unavailable
-Window period awareness in display
+PHASE 6.3.4: Enhanced Chart Component ⭐ SECOND PRIORITY
+Priority: High - Chart Visualization
+Estimated Time: 2-3 hours
+Status: Waiting for Phase 6.3.3
+Frontend Files to Create:
 
+src/components/ZoomableLineChart.vue - Chart.js with zoom/pan/sync capabilities
+src/composables/useWidgetSync.js - Cross-widget synchronization
 
-Global State Management:
+Features to Implement:
 
-Time range synchronization across all widgets
-Window period propagation to all widgets
-Refresh rate handling with auto-refresh timers
-Widget zoom/pan synchronization
+Chart.js Integration: Professional time-series charts with Chart.js
+Zoom/Pan Capabilities: Mouse wheel zoom, pan with zoom/pan plugin
+Multi-signal Support: Display multiple signals with different colors/styles
+Time Axis Synchronization: Sync zoom/pan across all widgets on page
+Real-time Data Integration: Connect to widget data APIs
+Error Handling: Loading states, no data states, error states
+Performance Optimization: Handle large datasets efficiently
 
-
-
-PHASE 6.4: GridStack Integration Enhancement ⭐ SECOND PRIORITY
+PHASE 6.3.5: GridStack Integration Enhancement ⭐ THIRD PRIORITY
 Priority: High - Core Integration
 Estimated Time: 2-3 hours
-Status: Waiting for Phase 6.3
+Status: Waiting for Phase 6.3.3-6.3.4
 Frontend Files to Modify:
 
 pages/DynamicPage.vue - Integrate wizard + time picker + enhanced saving
 components/WidgetBox.vue - Replace with metadata-driven widget
-services/api.js - Enhanced widget APIs integration
 
 Features to Implement:
 
-Enhanced GridStack Integration:
+Enhanced GridStack Integration: Replace simple widget creation with wizard popup
+Complete Widget Lifecycle: Create → Configure → Display → Update → Delete
+Layout Persistence: Save GridStack layout + widget metadata + time settings
+Widget Content Enhancement: Display real charts instead of placeholder content
+Auto-refresh Integration: Widgets update based on global time settings
 
-Replace simple widget creation with wizard popup
-Save complete widget metadata alongside GridStack positions
-Load widgets with full configuration on page refresh
-Handle widget deletion with metadata cleanup
-
-
-Widget Content Enhancement:
-
-Replace WidgetBox.vue with MetadataWidget.vue
-Display widget based on metadata configuration
-Real-time data updates based on global time settings
-Error states for unavailable data/connections
-
-
-Complete Layout Persistence:
-
-Save GridStack layout + widget metadata + time settings
-Restore complete page state on reload
-Handle widget refresh cycles based on refresh rate
-
-
-
-PHASE 6.5: Data Integration & Real-time Updates ⭐ THIRD PRIORITY
+PHASE 6.4: Data Integration & Real-time Updates ⭐ FOURTH PRIORITY
 Priority: High - Data Flow Completion
 Estimated Time: 2-3 hours
-Status: Waiting for Phase 6.3-6.4
+Status: Waiting for Phase 6.3.3-6.3.5
 Frontend Files to Create/Modify:
 
-utils/dataFormatter.js - Format backend data for Chart.js
-composables/useWidgetData.js - Widget data management
-components/ZoomableLineChart.vue - Enhanced with real data integration
+src/utils/dataFormatter.js - Format backend data for Chart.js
+src/composables/useWidgetData.js - Widget data management
+Enhanced chart components with real data integration
 
 Features to Implement:
 
-Real-time Data Updates:
-
-Automatic refresh based on page refresh rate settings
-Manual refresh on time range/window period changes
-Bulk data loading for all widgets on page
-Loading states and error handling
-
-
-Chart Data Integration:
-
-Format backend time-bucket data for Chart.js
-Handle multiple signals per widget
-Apply widget styling configuration
-Window period information display
-Point count optimization feedback
-
-
-Performance Optimization:
-
-Efficient data caching during session
-Debounced API calls on rapid time changes
-Progressive loading for large datasets
-
-
-
-PHASE 7: Performance Optimization 🔮 FUTURE ENHANCEMENT
-Priority: Medium - Performance Improvement
-Estimated Time: 3-4 hours
-Status: Future Development
-Features to Add:
-
-Client-side Data Caching: Cache widget data to reduce API calls
-Incremental Data Loading: Only fetch new data points
-Background Data Prefetching: Preload adjacent time ranges
-Memory Management: Cleanup old cached data
-Connection Pooling: Optimize database connections
-
-PHASE 8: Real-time Streaming 🔮 FUTURE ENHANCEMENT
-Priority: Low - Advanced Feature
-Estimated Time: 4-5 hours
-Status: Future Development
-Features to Add:
-
-WebSocket Integration: Real-time data streaming
-Live Data Indicators: Show when data is live vs historical
-Automatic Refresh Optimization: Smart refresh based on data freshness
-Connection Status Monitoring: Show data source connection health
-Real-time Alerts: Threshold-based notifications
-
-PHASE 3.1: InfluxDB Implementation 🔮 FUTURE DATABASE SUPPORT
-Priority: Medium - Additional Data Source
-Estimated Time: 3-4 hours
-Status: Future Development
-Backend Files to Modify:
-
-services/connection_service.py - Add InfluxDB connection testing
-services/schema_discovery_service.py - Implement InfluxDB methods
-requirements.txt - Add influxdb-client library
+Real-time Data Updates: Automatic refresh based on page refresh rate settings
+Manual Refresh Integration: Manual refresh on time range/window period changes
+Bulk Data Loading: Efficient loading for all widgets on page
+Loading States: Visual feedback during data fetching
+Error Recovery: Graceful handling of data fetch failures
+Performance Optimization: Debounced API calls, efficient caching
 
 
 📁 COMPLETE FILE STRUCTURE & STATUS
@@ -343,6 +296,7 @@ Backend Files (Python/FastAPI):
 ├── config.py ✅ UPDATED (widget models + window period config)
 ├── requirements.txt ✅ UPDATED (pandas, pyarrow)
 ├── .env.example ✅ NEW (environment configuration)
+├── create_schema.sql ✅ REFERENCE (database schema)
 ├── models/
 │   ├── filters.py ✅ WORKING (existing query filters)
 │   ├── meta_models.py ✅ UPDATED (enhanced with widget relationships)
@@ -370,7 +324,7 @@ src/
 │   ├── DataSourcePage.vue ✅ COMPLETE (connection management)
 │   ├── MetadataMappingPage.vue ✅ COMPLETE (V3 with signal value)
 │   ├── IndexPage.vue ✅ WORKING (dashboard with widgets)
-│   ├── DynamicPage.vue ✅ WORKING (needs Phase 6.4 enhancement)
+│   ├── DynamicPage.vue ✅ WORKING (needs Phase 6.3.5 enhancement)
 │   └── ErrorNotFound.vue ✅ WORKING (404 page)
 ├── components/
 │   ├── DataSourceManager.vue ✅ COMPLETE (connection orchestrator)
@@ -379,97 +333,99 @@ src/
 │   ├── SourcePanel.vue ✅ COMPLETE (tables/columns with multi-select)
 │   ├── TargetPanel.vue ✅ COMPLETE (drop zones + manual + signal value)
 │   ├── ChartRenderer.vue ✅ WORKING (existing chart component)
-│   ├── WidgetBox.vue ✅ WORKING (needs Phase 6.4 replacement)
+│   ├── WidgetBox.vue ✅ WORKING (needs Phase 6.3.5 replacement)
 │   ├── AddPageDialog.vue ✅ WORKING (page creation)
-│   ├── GlobalTimePicker.vue ❌ NEEDS CREATION (Phase 6.3)
-│   ├── WidgetWizard.vue ❌ NEEDS CREATION (Phase 6.3)
-│   └── ZoomableLineChart.vue ❌ NEEDS CREATION (Phase 6.3)
+│   ├── GlobalTimePicker.vue ✅ NEW COMPLETE (Phase 6.3.2)
+│   ├── WidgetWizard.vue ❌ NEEDS CREATION (Phase 6.3.3)
+│   └── ZoomableLineChart.vue ❌ NEEDS CREATION (Phase 6.3.4)
 ├── composables/
-│   ├── useGlobalTime.js ❌ NEEDS CREATION (Phase 6.3)
-│   └── useWidgetSync.js ❌ NEEDS CREATION (Phase 6.3)
+│   ├── useGlobalTime.js ✅ NEW COMPLETE (Phase 6.3.1)
+│   ├── useWidgetSync.js ❌ NEEDS CREATION (Phase 6.3.4)
+│   └── useWidgetData.js ❌ NEEDS CREATION (Phase 6.4)
 ├── utils/
-│   └── chartUtils.js ❌ NEEDS CREATION (Phase 6.3)
+│   ├── chartUtils.js ✅ NEW COMPLETE (Phase 6.3.1)
+│   └── dataFormatter.js ❌ NEEDS CREATION (Phase 6.4)
 └── router/
     └── routes.js ✅ UPDATED (includes all page routes)
 
-🚀 NEXT DEVELOPER INSTRUCTIONS
-Immediate Next Steps - Phase 6.3:
+🎯 IMMEDIATE NEXT STEPS
+Phase 6.3.3 Development Plan - Widget Wizard Component
+Objective: Create multi-step wizard for widget creation with metadata selection
+Component Structure:
+vue<template>
+  <!-- Step navigation -->
+  <!-- Step 1: Widget Type Selection -->
+  <!-- Step 2: Equipment Selection -->  
+  <!-- Step 3: Signal Selection -->
+  <!-- Step 4: Filter Selection -->
+  <!-- Step 5: Widget Styling -->
+  <!-- Step 6: Widget Label & Preview -->
+  <!-- Step 7: Create & Position -->
+</template>
 
-Start with Global Time Picker Component:
+<script setup>
+  // Multi-step form management
+  // API integration for metadata
+  // Widget creation and positioning
+  // Integration with GridStack
+</script>
+API Integration:
 
-bash# Create components/GlobalTimePicker.vue
-# Features: Time range + refresh rate + window period dropdown
-# Position: Top-right corner of DynamicPage
-# API Integration: /widgets/time-ranges/presets endpoint
+Equipment list: GET /widgets/metadata/equipments
+Equipment signals: GET /widgets/metadata/equipment/{id}/signals
+Widget creation: POST /widgets/
+Layout saving: PUT /widgets/pages/{page_id}/layout
 
-Create Widget Wizard Component:
+Key Features:
 
-bash# Create components/WidgetWizard.vue  
-# Multi-step wizard with metadata selection
-# API Integration: /widgets/metadata/* endpoints
-# Equipment → Signals → Filters → Styling → Create
+Step-by-step UI: Guided wizard with validation at each step
+Equipment Selection: Multi-select dropdown with search
+Signal Selection: Grouped by equipment, multi-select with preview
+Filter Configuration: Dynamic filter setup based on equipment
+Styling Options: Color picker, line styles, chart options
+Real-time Preview: Live preview of widget configuration
+GridStack Integration: Place widget directly in layout after creation
 
-Build Zoomable Chart Component:
 
-bash# Create components/ZoomableLineChart.vue
-# Chart.js with chartjs-plugin-zoom
-# Multi-signal support with time synchronization
-# API Integration: /widgets/{widget_id}/data endpoint
-
-Global State Management:
-
-bash# Create composables/useGlobalTime.js
-# Global time, refresh rate, window period state
-# Synchronization across all widgets on page
-Testing the Current Backend:
+🚀 DEVELOPMENT ENVIRONMENT SETUP
+Backend:
 bash# Start backend
 uvicorn main:app --reload --port 8000
 
-# Test environment configuration
-export MAX_POINTS_PER_WIDGET=50  # Test with 50 points
+# Environment variables
+export MAX_POINTS_PER_WIDGET=100
 export DEFAULT_WINDOW_PERIOD=auto
-
-# Key endpoints to test:
-GET  http://localhost:8000/widgets/time-ranges/presets
-POST http://localhost:8000/widgets/window-period/calculate
-GET  http://localhost:8000/widgets/metadata/equipments
-POST http://localhost:8000/widgets/ (create widget)
-POST http://localhost:8000/widgets/{widget_id}/data (get data)
-Development Environment Setup:
-bash# Backend setup
-pip install fastapi uvicorn sqlalchemy fastapi-utils pydantic pandas pyarrow
-
-# Frontend setup  
-npm install @quasar/cli
+Frontend:
+bash# Start frontend
 quasar dev --port 9000
 
-# Environment variables
-cp .env.example .env
-# Edit MAX_POINTS_PER_WIDGET and DEFAULT_WINDOW_PERIOD as needed
+# Test current phases
+http://localhost:9000/#/test
+Key Endpoints to Verify:
 
-🎯 CURRENT STATUS SUMMARY
-✅ COMPLETED (85% of total system):
+GET http://localhost:8000/widgets/time-ranges/presets
+GET http://localhost:8000/widgets/metadata/equipments
+POST http://localhost:8000/widgets/window-period/calculate
 
-Complete backend API system with 50+ endpoints
-Database foundation with widget metadata storage
-Auto query generation with time_bucket optimization
-Window period calculation with configurable point limits
-Data source management (SQLite3 + Parquet)
-Advanced metadata mapping with drag & drop
-Complete CRUD operations for all entities
 
-🚧 IN PROGRESS (Phase 6.3 - Next):
+📊 PROGRESS SUMMARY
+✅ COMPLETED: 85% of total system
 
-Frontend widget components
-Global time management UI
-Chart.js integration with zoom/sync
+Complete backend API system (50+ endpoints)
+Database foundation with widget metadata
+Global time management system
+Professional time picker component
+Data source management
+Advanced metadata mapping
+Auto query generation with window optimization
 
-⏳ PENDING (15% remaining):
+🚧 IN PROGRESS: Phase 6.3.3 (Widget Wizard Component)
+⏳ PENDING: 15% remaining
 
-GridStack integration enhancement (Phase 6.4)
-Data integration & real-time updates (Phase 6.5)
-Performance optimization (Phase 7)
-Real-time streaming (Phase 8)
+Widget wizard component (Phase 6.3.3)
+Chart component with zoom/sync (Phase 6.3.4)
+GridStack integration enhancement (Phase 6.3.5)
+Data integration & real-time updates (Phase 6.4)
 
-🎯 READY FOR: Complete frontend widget system development with full backend API support including advanced window period optimization and auto query generation.
-The system is production-ready for backend functionality and ready for frontend development to complete the widget visualization system! 🚀
+🎯 READY FOR: Complete widget wizard development with full backend API support and professional time management system integration.
+Next Developer Should Focus On: Creating the WidgetWizard.vue component that integrates with existing metadata APIs to provide a guided widget creation experience.

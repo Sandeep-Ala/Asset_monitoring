@@ -6,6 +6,12 @@
     <div class="row q-gutter-md items-center">
       <q-btn icon="add" label="Add Widget" @click="addWidget" color="primary" />
       <q-btn icon="save" label="Save Layout" @click="saveLayout" color="positive" />
+        <div>     <WidgetWizard
+      ref="widgetWizard"
+      :page-id="pageId"
+      @widget-created="onWidgetCreated"
+      @close="onWizardClose"
+    /> </div>
     </div>
 
     <div ref="gridContainer" class="grid-stack q-mt-md"></div>
@@ -20,6 +26,22 @@ import { onMounted, ref } from 'vue'
 import { GridStack } from 'gridstack'
 import 'gridstack/dist/gridstack.min.css'
 import axios from 'axios'
+import WidgetWizard from 'src/components/WidgetWizard.vue'
+
+const widgetWizard = ref(null)
+
+function openWidgetWizard() {
+  widgetWizard.value.open()
+}
+
+function onWidgetCreated(widget) {
+  console.log('Widget created:', widget)
+  // Handle widget creation (add to GridStack, etc.)
+}
+
+function onWizardClose() {
+  console.log('Wizard closed')
+}
 
 const grid = ref(null)
 const gridContainer = ref(null)

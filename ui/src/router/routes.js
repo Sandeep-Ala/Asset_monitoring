@@ -6,7 +6,7 @@ import IndexPage from 'pages/IndexPage.vue'
 import DynamicPage from 'pages/DynamicPage.vue'
 import DataSourcePage from 'pages/DataSourcePage.vue'
 import MetadataMappingPage from 'pages/MetadataMappingPage.vue'
-
+import TestPage from 'pages/TestPage.vue'
 const routes = [
   {
     path: '/',
@@ -38,6 +38,14 @@ const routes = [
           title: 'Metadata Mapping',
           icon: 'drag_indicator',
           description: 'Drag and drop tables/columns to create metadata'
+        }
+      },
+      {
+        path: '/test',
+        component: TestPage,
+        meta: {
+          title: 'Testing Phase 6.3',
+          icon: 'bug_report'
         }
       },
       {

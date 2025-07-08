@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from services.meta_routes import router as meta_router
 from services.page_routes import router as page_router
 from services.datasource_routes import router as datasource_router  # New import
+from services.widget_routes import router as widget_router
 from pydantic import BaseModel
 from typing import List
 
@@ -18,6 +19,8 @@ app = FastAPI()
 app.include_router(meta_router)
 app.include_router(page_router)
 app.include_router(datasource_router)  # New router
+app.include_router(widget_router)
+
 
 # Allow frontend requests (CORS)
 app.add_middleware(
