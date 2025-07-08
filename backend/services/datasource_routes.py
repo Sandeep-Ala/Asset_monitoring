@@ -1,4 +1,4 @@
-# services/datasource_routes.py
+# services/datasource_routes.py - Updated with Enhanced Parquet Support
 
 from fastapi import Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -211,8 +211,16 @@ class DataSourceRoutes:
             },
             "parquet": {
                 "name": "Parquet Files",
+                "description": "Time-series data stored in partitioned Parquet files",
                 "fields": [
-                    {"key": "base_path", "label": "Base Path", "type": "text", "required": True, "placeholder": "/path/to/parquet/files"}
+                    {
+                        "key": "base_path", 
+                        "label": "Base Directory Path", 
+                        "type": "text", 
+                        "required": True, 
+                        "placeholder": "D:\\Data-Backup\\site=UK_Tollgate",
+                        "help": "Path to the root directory containing partitioned parquet files (e.g., site=*/year=*/month=*/day=*/equipment=*/dcu=*/*.parquet)"
+                    }
                 ]
             }
         }
@@ -246,9 +254,16 @@ class DataSourceRoutes:
         if not config:
             return SchemaResponse(success=False, data={}, message="Connection configuration not found")
         
-        # Get complete schema
+        # Add db_type to config for schema discovery
+        config['db_type'] = connection.db_type
+        
+        # Get complete schema based on database type
         if connection.db_type.lower() == "sqlite3":
             success, data, message = SchemaDiscoveryService.get_complete_schema(config, quick_mode)
+        elif connection.db_type.lower() == "parquet":
+            success, data, message = SchemaDiscoveryService.get_complete_schema(config, quick_mode)
+        elif connection.db_type.lower() == "influxdb":
+            success, data, message = False, {}, f"InfluxDB schema discovery not yet implemented"
         else:
             success, data, message = False, {}, f"Schema discovery not implemented for {connection.db_type}"
         
@@ -283,8 +298,48 @@ class DataSourceRoutes:
                         "total_tables": len(tables),
                         "table_names": [t["name"] for t in tables[:10]]  # First 10 table names
                     }
+            elif connection.db_type.lower() == "parquet":
+                config['db_type'] = connection.db_type  # Add db_type for parquet
+                success, tables, _ = SchemaDiscoveryService.get_parquet_tables(config)
+                if success:
+                    result["stats"] = {
+                        "total_tables": len(tables),
+                        "equipment_types": [t["name"] for t in tables[:10]],  # First 10 equipment types
+                        "base_path": config.get('base_path')
+                    }
         
         return result
+
+    # Additional Parquet-specific route for structure analysis
+    @datasource_router.get("/connections/{connection_id}/parquet-structure")
+    def get_parquet_structure_info(self, connection_id: str):
+        """Get detailed Parquet directory structure information"""
+        connection = crud.get_data_connection_by_id(self.db, connection_id)
+        if not connection:
+            raise HTTPException(status_code=404, detail="Connection not found")
+        
+        if connection.db_type.lower() != "parquet":
+            raise HTTPException(status_code=400, detail="This endpoint is only for Parquet connections")
+        
+        config = crud.get_connection_config_dict(self.db, connection_id)
+        if not config:
+            raise HTTPException(status_code=404, detail="Connection configuration not found")
+        
+        # Get detailed structure information
+        success, structure_info, message = ConnectionTestService.get_parquet_structure_info(config)
+        
+        if success:
+            return {
+                "success": True,
+                "data": structure_info,
+                "message": message
+            }
+        else:
+            return {
+                "success": False,
+                "data": {},
+                "message": message
+            }
 
 # Router export
 router = datasource_router

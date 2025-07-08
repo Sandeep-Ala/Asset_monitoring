@@ -1,8 +1,23 @@
-fastapi_utils
-fastapi
-SQLAlchemy
-pydantic
-python-dotenv
-fastapi[standard]
-uvicorn
-typing_inspect
+# requirements.txt - Updated with Parquet Dependencies
+
+# Existing dependencies
+fastapi==0.104.1
+uvicorn==0.24.0
+sqlalchemy==2.0.23
+fastapi-utils==0.2.1
+pydantic==2.5.0
+
+# Parquet support dependencies
+pandas>=2.0.0
+pyarrow>=10.0.0
+
+# Optional: For better performance with large parquet files
+# polars>=0.19.0  # Alternative to pandas for faster parquet processing
+
+# Database drivers (existing)
+# sqlite3 - built into Python
+# influxdb-client==1.38.0  # For future InfluxDB support
+
+# Development dependencies (optional)
+# pytest>=7.0.0
+# pytest-asyncio>=0.21.0
