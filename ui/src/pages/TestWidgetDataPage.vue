@@ -1,4 +1,4 @@
-<!-- src/pages/TestWidgetDataPage.vue -->
+src/pages/TestWidgetDataPage.vue
 <!-- FIXED VERSION - Widget Data Testing Component -->
 <!-- Proper lifecycle management and API integration testing -->
 
@@ -557,7 +557,7 @@ import {
   validateChartData,
   generateMockChartData,
   getSignalColor,
-  formatNumericValue,
+  // formatNumericValue,
   formatWindowPeriod,
   CHART_COLORS,
   LINE_STYLES

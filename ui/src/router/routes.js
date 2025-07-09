@@ -7,7 +7,7 @@ import DynamicPage from 'pages/DynamicPage.vue'
 import DataSourcePage from 'pages/DataSourcePage.vue'
 import MetadataMappingPage from 'pages/MetadataMappingPage.vue'
 import TestPage from 'pages/TestPage.vue'
-import TestWidget from 'pages/TestWidgetDataPage.vue'
+// import TestWidget from 'pages/TestWidgetDataPage.vue'
 import zoomtest from 'pages/ZoomableChartTestPage.vue'
 const routes = [
   {
@@ -50,14 +50,14 @@ const routes = [
           icon: 'bug_report'
         }
       },
-      {
-        path: '/test-widget-data',
-        component: TestWidget,
-        meta: {
-          title: 'Testing Phase 6.3.4',
-          icon: 'bug_report'
-        }
-      },
+      // {
+      //   path: '/test-widget-data',
+      //   component: TestWidget,
+      //   meta: {
+      //     title: 'Testing Phase 6.3.4',
+      //     icon: 'bug_report'
+      //   }
+      // },
         {
         path: '/test-zoomable-chart',
         component: zoomtest,

@@ -165,7 +165,7 @@ class DataRetrievalService:
         """
         try:
             # Import here to avoid circular imports
-            from models.meta_models import Signal
+            from models.meta_models import EquipmentSignal
             from config import get_db
             
             signal_metadata = []
@@ -174,16 +174,17 @@ class DataRetrievalService:
             db = next(get_db())
             
             for signal_id in signal_ids:
-                signal = db.query(Signal).filter(Signal.signal_id == signal_id).first()
+                signal = db.query(EquipmentSignal).filter(EquipmentSignal.id == signal_id).first()
                 if signal:
                     signal_metadata.append({
-                        'signal_id': signal.signal_id,
-                        'key': signal.column_name,
-                        'value': signal.signal_value or signal.column_name,
-                        'column_name': signal.column_name,
-                        'signal_value': signal.signal_value,
-                        'unit': getattr(signal, 'unit', ''),
-                        'equipment_id': signal.equipment_id
+                        'signal_id': signal.id,
+                        'key': signal.key,
+                        'value': signal.value,
+                        # 'column_name': signal.column_name,
+                        # 'signal_value': signal.signal_value,
+                        # 'unit': getattr(signal, 'unit', ''),
+                        'unit': signal.unit,
+                        'equipment_id': signal.eqp_id
                     })
                 else:
                     print(f"⚠️ Signal ID {signal_id} not found in database")

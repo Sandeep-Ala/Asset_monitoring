@@ -1,60 +1,58 @@
-// src/utils/dataFormatter.js
-// FIXED VERSION - Backend Data Structure Support
-// Handles backend data transformation with proper Chart.js format
+// src/utils/dataFormatter.js - FIXED VERSION
+// Critical fixes for timestamp processing and chart data ordering
+// FIXES: Time-only timestamps, chronological ordering, date range display
 
-import { format, parseISO, isValid } from 'date-fns'
+import { parseISO, isValid, format } from 'date-fns'
 
-// ==================== CONSTANTS ====================
+// ==================== PROFESSIONAL COLOR PALETTE ====================
 
-// Professional color palette (16 colors) - Grafana inspired
-export const CHART_COLORS = [
-  '#2196F3', // Blue (matches your data)
-  '#FF6B6B', // Red
-  '#4ECDC4', // Teal
-  '#45B7D1', // Light Blue
-  '#96CEB4', // Light Green
-  '#FFEAA7', // Yellow
-  '#DDA0DD', // Plum
-  '#98D8C8', // Mint
-  '#F7DC6F', // Gold
-  '#BB8FCE', // Lavender
-  '#85C1E9', // Sky Blue
-  '#F8C471', // Orange
-  '#82E0AA', // Light Green
-  '#F1948A', // Pink
-  '#D7BDE2', // Light Purple
-  '#A3E4D7'  // Light Cyan
+const CHART_COLORS = [
+  '#2196F3', // Blue
+  '#4CAF50', // Green
+  '#FF9800', // Orange
+  '#9C27B0', // Purple
+  '#F44336', // Red
+  '#00BCD4', // Cyan
+  '#FFEB3B', // Yellow
+  '#795548', // Brown
+  '#607D8B', // Blue Grey
+  '#E91E63', // Pink
+  '#3F51B5', // Indigo
+  '#8BC34A', // Light Green
+  '#FF5722', // Deep Orange
+  '#673AB7', // Deep Purple
+  '#009688', // Teal
+  '#FFC107'  // Amber
 ]
 
-// Line style patterns for multiple signals
-export const LINE_STYLES = [
-  { borderDash: [], label: 'solid' },
-  { borderDash: [5, 5], label: 'dashed' },
-  { borderDash: [2, 8], label: 'dotted' },
-  { borderDash: [10, 5, 2, 5], label: 'dash-dot' },
-  { borderDash: [15, 3, 3, 3], label: 'dash-dot-dot' }
+const LINE_STYLES = [
+  {},                                    // Solid
+  { borderDash: [5, 5] },               // Dashed
+  { borderDash: [2, 2] },               // Dotted
+  { borderDash: [10, 5, 2, 5] },        // Dash-dot
+  { borderDash: [15, 3, 3, 3] }         // Long dash-dot
 ]
 
-// ==================== CORE TRANSFORMATION ====================
+// ==================== MAIN TRANSFORMATION FUNCTION ====================
 
 /**
- * Transform backend widget data to Chart.js format
- * FIXED: Now handles backend structure with separate labels and datasets arrays
- * @param {Object} backendData - Data from /widgets/{widget_id}/data endpoint
- * @param {Object} widgetConfig - Widget configuration from wizard
- * @param {Object} options - Additional formatting options
- * @returns {Object} Chart.js compatible data structure
+ * Transform backend widget data to Chart.js compatible format
+ * FIXED: Proper timestamp handling for multi-day ranges and chronological ordering
+ * @param {Object} backendData - Raw data from backend API
+ * @param {Object} widgetConfig - Widget configuration
+ * @param {Object} options - Transformation options
+ * @returns {Object} Chart.js compatible data object
  */
 export function transformWidgetDataToChart(backendData, widgetConfig = {}, options = {}) {
-  try {
-    console.log('🔄 Transforming backend data to Chart.js format')
-    console.log('📊 Backend data structure:', {
-      isEmpty: backendData?.isEmpty,
-      datasets: backendData?.datasets?.length || 0,
-      labels: backendData?.labels?.length || 0,
-      totalPoints: backendData?.totalPoints
-    })
+  console.log('🔄 Transforming backend data to Chart.js format')
+  console.log('📊 Backend data structure:', {
+    isEmpty: backendData?.isEmpty,
+    datasets: backendData?.datasets?.length || 0,
+    labels: backendData?.labels?.length || 0,
+    totalPoints: backendData?.totalPoints
+  })
 
+  try {
     // Handle empty data
     if (backendData?.isEmpty || !backendData?.datasets || backendData.datasets.length === 0) {
       return {
@@ -81,13 +79,16 @@ export function transformWidgetDataToChart(backendData, widgetConfig = {}, optio
       firstDataset: backendDatasets[0]?.label
     })
 
-    // Transform timestamps to Date objects for Chart.js
-    const chartLabels = transformTimestamps(backendLabels, backendData)
+    // CRITICAL FIX: Transform timestamps with proper date handling
+    const chartLabels = transformTimestampsWithDates(backendLabels, backendData)
 
-    // Transform datasets with proper data point mapping
+    // Transform datasets with proper data point mapping and ensure chronological order
     const chartDatasets = backendDatasets.map((dataset, index) => {
       return transformDataset(dataset, chartLabels, backendLabels, index, widgetConfig, options)
     })
+
+    // CRITICAL FIX: Sort the entire chart data by timestamp to ensure chronological order
+    const sortedChartData = sortChartDataChronologically(chartLabels, chartDatasets)
 
     // Prepare metadata
     const metadata = {
@@ -100,17 +101,21 @@ export function transformWidgetDataToChart(backendData, widgetConfig = {}, optio
     }
 
     console.log('✅ Data transformation complete:', {
-      labels: chartLabels.length,
-      datasets: chartDatasets.length,
+      labels: sortedChartData.labels.length,
+      datasets: sortedChartData.datasets.length,
       totalPoints: metadata.totalPoints,
-      firstDataPoint: chartDatasets[0]?.data[0]
+      firstDataPoint: sortedChartData.datasets[0]?.data[0],
+      timeRange: {
+        start: sortedChartData.labels[0],
+        end: sortedChartData.labels[sortedChartData.labels.length - 1]
+      }
     })
 
     return {
-      labels: chartLabels,
-      datasets: chartDatasets,
+      labels: sortedChartData.labels,
+      datasets: sortedChartData.datasets,
       isEmpty: false,
-      metadata
+      metadata: metadata
     }
 
   } catch (error) {
@@ -119,46 +124,222 @@ export function transformWidgetDataToChart(backendData, widgetConfig = {}, optio
       labels: [],
       datasets: [],
       isEmpty: true,
-      message: `Data transformation error: ${error.message}`,
-      metadata: {
-        error: true,
-        errorMessage: error.message
+      message: `Transformation error: ${error.message}`,
+      metadata: { totalPoints: 0 }
+    }
+  }
+}
+
+// ==================== CRITICAL FIX: TIMESTAMP TRANSFORMATION ====================
+
+/**
+ * Transform timestamp labels with proper date handling
+ * FIXED: Handles time-only strings by combining with query date range
+ * @param {Array} timestamps - Array of timestamp strings
+ * @param {Object} backendData - Backend data for context
+ * @returns {Array} Array of Date objects in chronological order
+ */
+function transformTimestampsWithDates(timestamps, backendData = {}) {
+  if (!Array.isArray(timestamps)) {
+    console.warn('⚠️ Invalid timestamps array:', timestamps)
+    return []
+  }
+
+  console.log('🕒 Transforming timestamps:', {
+    count: timestamps.length,
+    firstTimestamp: timestamps[0],
+    lastTimestamp: timestamps[timestamps.length - 1],
+    hasTimeRange: !!backendData.timeRange
+  })
+
+  // CRITICAL FIX: Get the actual date range from the query or time range
+  const dateContext = extractDateContext(backendData)
+
+  return timestamps.map((timestamp, index) => {
+    try {
+      // Handle different timestamp formats
+      if (timestamp instanceof Date) {
+        return timestamp
       }
+
+      if (typeof timestamp === 'string') {
+        // Full ISO format (with date) - preferred
+        if (timestamp.includes('T') || timestamp.includes('-')) {
+          const parsed = parseISO(timestamp)
+          if (isValid(parsed)) {
+            return parsed
+          }
+        }
+
+        // CRITICAL FIX: Time only format (HH:mm:ss) - combine with actual date range
+        if (timestamp.match(/^\d{2}:\d{2}:\d{2}(\.\d+)?$/)) {
+          return combineTimeWithDateRange(timestamp, index, timestamps.length, dateContext)
+        }
+
+        // Fallback to native Date parsing
+        const fallback = new Date(timestamp)
+        if (isValid(fallback)) {
+          return fallback
+        }
+      }
+
+      console.warn(`⚠️ Could not parse timestamp at index ${index}:`, timestamp)
+      return new Date()
+
+    } catch (error) {
+      console.warn('⚠️ Timestamp parsing error:', timestamp, error)
+      return new Date()
+    }
+  })
+}
+
+/**
+ * Extract date context from backend data
+ * FIXED: Gets actual query date range instead of defaulting to today
+ */
+function extractDateContext(backendData) {
+  try {
+    // Try to get date range from widget_info query
+    const queryString = backendData.widget_info?.query_executed
+    if (queryString) {
+      // Extract timestamps from query like: WHERE t_sampling_time >= '2025-03-01T08:20:00.000Z'
+      const startMatch = queryString.match(/t_sampling_time >= '([^']+)'/)
+      const endMatch = queryString.match(/t_sampling_time <= '([^']+)'/)
+
+      if (startMatch && endMatch) {
+        return {
+          startDate: new Date(startMatch[1]),
+          endDate: new Date(endMatch[1]),
+          source: 'query'
+        }
+      }
+    }
+
+    // Try timeRange from API request
+    if (backendData.timeRange?.start && backendData.timeRange?.end) {
+      return {
+        startDate: new Date(backendData.timeRange.start),
+        endDate: new Date(backendData.timeRange.end),
+        source: 'timeRange'
+      }
+    }
+
+    // Fallback to current date
+    console.warn('⚠️ Could not extract date context, using current date')
+    return {
+      startDate: new Date(),
+      endDate: new Date(),
+      source: 'fallback'
+    }
+  } catch (error) {
+    console.warn('⚠️ Error extracting date context:', error)
+    return {
+      startDate: new Date(),
+      endDate: new Date(),
+      source: 'error'
     }
   }
 }
 
 /**
- * Transform individual dataset with proper data point mapping
- * @param {Object} dataset - Backend dataset object
- * @param {Array} chartLabels - Transformed chart labels (Date objects)
- * @param {Array} backendLabels - Original backend labels
- * @param {number} index - Dataset index for styling
- * @param {Object} widgetConfig - Widget configuration
- * @param {Object} options - Additional options
- * @returns {Object} Chart.js dataset
+ * Combine time-only string with actual date range
+ * CRITICAL FIX: Distributes times across the actual date range instead of using single day
  */
-function transformDataset(dataset, chartLabels, backendLabels, index, widgetConfig = {}, options = {}) {
+function combineTimeWithDateRange(timeString, index, totalPoints, dateContext) {
   try {
-    const {
-      label = `Signal ${index + 1}`,
-      data = [],
-      unit = '',
-      borderColor,
-      backgroundColor,
-      ...otherProps
-    } = dataset
+    const [hours, minutes, seconds] = timeString.split(':').map(Number)
+    const milliseconds = seconds % 1 > 0 ? Math.round((seconds % 1) * 1000) : 0
 
-    // Map data values to chart labels
+    // CRITICAL FIX: Calculate actual date based on position in time range
+    const startDate = dateContext.startDate
+    const endDate = dateContext.endDate
+    const totalDuration = endDate.getTime() - startDate.getTime()
+
+    // Interpolate the date based on the index position
+    const progress = totalPoints > 1 ? index / (totalPoints - 1) : 0
+    const targetTimestamp = startDate.getTime() + (totalDuration * progress)
+    const targetDate = new Date(targetTimestamp)
+
+    // Set the specific time while keeping the interpolated date
+    const result = new Date(targetDate)
+    result.setHours(hours, minutes, Math.floor(seconds), milliseconds)
+
+    return result
+  } catch (error) {
+    console.warn('⚠️ Error combining time with date range:', timeString, error)
+    return new Date()
+  }
+}
+
+// ==================== CRITICAL FIX: CHRONOLOGICAL SORTING ====================
+
+/**
+ * Sort chart data chronologically to prevent zig-zag patterns
+ * FIXED: Sorts both labels and all dataset data points together
+ */
+function sortChartDataChronologically(labels, datasets) {
+  try {
+    // Create array of indices with timestamps for sorting
+    const indexedData = labels.map((label, index) => ({
+      timestamp: label,
+      index: index
+    }))
+
+    // Sort by timestamp
+    indexedData.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
+
+    // Extract sorted indices
+    const sortedIndices = indexedData.map(item => item.index)
+
+    // Apply sorted order to labels
+    const sortedLabels = sortedIndices.map(index => labels[index])
+
+    // Apply sorted order to all datasets
+    const sortedDatasets = datasets.map(dataset => ({
+      ...dataset,
+      data: sortedIndices.map(index => dataset.data[index])
+    }))
+
+    console.log('🔄 Data sorted chronologically:', {
+      originalOrder: labels.slice(0, 3).map(l => l.toISOString()),
+      sortedOrder: sortedLabels.slice(0, 3).map(l => l.toISOString())
+    })
+
+    return {
+      labels: sortedLabels,
+      datasets: sortedDatasets
+    }
+  } catch (error) {
+    console.error('❌ Error sorting chart data:', error)
+    return { labels, datasets }
+  }
+}
+
+// ==================== DATASET TRANSFORMATION ====================
+
+/**
+ * Transform a single dataset for Chart.js
+ * @param {Object} dataset - Backend dataset
+ * @param {Array} chartLabels - Transformed chart labels
+ * @param {Array} backendLabels - Original backend labels
+ * @param {number} index - Dataset index
+ * @param {Object} widgetConfig - Widget configuration
+ * @param {Object} options - Transformation options
+ * @returns {Object} Chart.js dataset object
+ */
+function transformDataset(dataset, chartLabels, backendLabels, index, widgetConfig, options) {
+  try {
+    const data = dataset.data || []
+    const label = dataset.label || `Signal ${index + 1}`
+    const unit = dataset.unit || ''
+
+    // Map data values to chart labels creating {x, y} objects for Chart.js
     const chartData = mapDataToLabels(data, chartLabels, backendLabels)
 
-    // Generate colors if not provided
-    const color = borderColor || getSignalColor(index)
-    const bgColor = backgroundColor || `${color}20` // Add transparency
-
-    // Extract styling configuration
+    // Get styling configuration
     const stylingConfig = widgetConfig?.styling_config || {}
-    const lineStyle = getLineStyle(stylingConfig?.line_style, index)
+    const color = getSignalColor(index)
+    const lineStyle = getLineStyle(stylingConfig?.line_styles?.[index] || 'solid')
 
     console.log(`📊 Transformed dataset "${label}":`, {
       originalDataLength: data.length,
@@ -168,12 +349,10 @@ function transformDataset(dataset, chartLabels, backendLabels, index, widgetConf
     })
 
     return {
-      label: formatSignalLabel(label, unit),
+      label: label,
       data: chartData,
-
-      // Color and styling
       borderColor: color,
-      backgroundColor: stylingConfig.fill_area ? bgColor : 'transparent',
+      backgroundColor: 'transparent',
       pointBackgroundColor: color,
       pointBorderColor: '#ffffff',
 
@@ -192,10 +371,7 @@ function transformDataset(dataset, chartLabels, backendLabels, index, widgetConf
 
       // Metadata
       unit: unit,
-      originalLength: data.length,
-
-      // Pass through other properties
-      ...otherProps
+      originalLength: data.length
     }
 
   } catch (error) {
@@ -233,91 +409,6 @@ function mapDataToLabels(dataValues, chartLabels, backendLabels) {
   }))
 }
 
-/**
- * Transform timestamp labels for Chart.js time scale
- * @param {Array} timestamps - Array of timestamp strings (e.g., ["04:52:00", "05:07:09"])
- * @param {Object} backendData - Backend data for context
- * @returns {Array} Array of Date objects for Chart.js
- */
-function transformTimestamps(timestamps, backendData = {}) {
-  if (!Array.isArray(timestamps)) {
-    console.warn('⚠️ Invalid timestamps array:', timestamps)
-    return []
-  }
-
-  // Get the base date from timeRange if available
-  const baseDate = getBaseDate(backendData)
-
-  return timestamps.map((timestamp, index) => {
-    try {
-      // Handle different timestamp formats
-      if (timestamp instanceof Date) {
-        return timestamp
-      }
-
-      if (typeof timestamp === 'string') {
-        // ISO format (with date)
-        if (timestamp.includes('T') || timestamp.includes('-')) {
-          const parsed = parseISO(timestamp)
-          if (isValid(parsed)) {
-            return parsed
-          }
-        }
-
-        // Time only format (HH:mm:ss) - combine with base date
-        if (timestamp.match(/^\d{2}:\d{2}:\d{2}$/)) {
-          const [hours, minutes, seconds] = timestamp.split(':')
-          const date = new Date(baseDate)
-          date.setHours(parseInt(hours), parseInt(minutes), parseInt(seconds), 0)
-          return date
-        }
-
-        // Fallback to native Date parsing
-        const fallback = new Date(timestamp)
-        if (isValid(fallback)) {
-          return fallback
-        }
-      }
-
-      console.warn(`⚠️ Could not parse timestamp at index ${index}:`, timestamp)
-      return new Date()
-
-    } catch (error) {
-      console.warn('⚠️ Timestamp parsing error:', timestamp, error)
-      return new Date()
-    }
-  })
-}
-
-/**
- * Get base date for time-only timestamps
- * @param {Object} backendData - Backend data object
- * @returns {Date} Base date to use for time-only timestamps
- */
-function getBaseDate(backendData) {
-  try {
-    // Try to get date from widget_info query or timeRange
-    const queryString = backendData.widget_info?.query_executed
-    if (queryString) {
-      const dateMatch = queryString.match(/TIMESTAMP '(\d{4}-\d{2}-\d{2})/)
-      if (dateMatch) {
-        return new Date(dateMatch[1] + 'T00:00:00.000Z')
-      }
-    }
-
-    // Try timeRange start
-    if (backendData.timeRange?.start) {
-      return new Date(backendData.timeRange.start)
-    }
-
-    // Default to today
-    return new Date()
-  } catch (error) {
-    console.warn('⚠️ Could not determine base date:', error)
-    return new Date()
-  }
-}
-
 // ==================== STYLING UTILITIES ====================
 
 /**
@@ -345,183 +436,123 @@ export function getSignalColor(index, alpha = 1) {
 /**
  * Get line style configuration
  * @param {string} styleType - Style type ('solid', 'dashed', etc.)
- * @param {number} index - Dataset index for fallback
  * @returns {Object} Chart.js line style configuration
  */
-function getLineStyle(styleType, index = 0) {
+export function getLineStyle(styleType) {
   const styles = {
     'solid': {},
     'dashed': { borderDash: [5, 5] },
     'dotted': { borderDash: [2, 2] },
     'dashdot': { borderDash: [10, 5, 2, 5] },
-    'dashdotdot': { borderDash: [15, 3, 3, 3] }
+    'longdash': { borderDash: [15, 3, 3, 3] }
   }
 
-  // Use specified style or default based on index
-  return styles[styleType] || LINE_STYLES[index % LINE_STYLES.length] || {}
+  return styles[styleType] || styles['solid']
 }
 
+// ==================== VALIDATION ====================
+
 /**
- * Format signal label with unit
- * @param {string} label - Signal label
- * @param {string} unit - Signal unit
- * @returns {string} Formatted label
+ * Validate Chart.js data structure
+ * @param {Object} chartData - Chart data to validate
+ * @returns {boolean} True if valid
  */
-function formatSignalLabel(label, unit) {
-  if (!unit) return label
-  return `${label} (${unit})`
+export function validateChartData(chartData) {
+  try {
+    if (!chartData || typeof chartData !== 'object') {
+      return false
+    }
+
+    if (chartData.isEmpty) {
+      return true // Empty data is valid
+    }
+
+    // Check datasets
+    if (!Array.isArray(chartData.datasets)) {
+      console.warn('⚠️ Chart data validation failed: datasets is not an array')
+      return false
+    }
+
+    // Validate each dataset
+    for (const dataset of chartData.datasets) {
+      if (!Array.isArray(dataset.data)) {
+        console.warn('⚠️ Chart data validation failed: dataset.data is not an array')
+        return false
+      }
+
+      // Check if data points have x,y structure for time series
+      for (const point of dataset.data) {
+        if (typeof point !== 'object' || !point.hasOwnProperty('x') || !point.hasOwnProperty('y')) {
+          console.warn('⚠️ Chart data validation failed: data point missing x,y structure')
+          return false
+        }
+      }
+    }
+
+    return true
+
+  } catch (error) {
+    console.error('❌ Chart data validation error:', error)
+    return false
+  }
 }
 
-// ==================== FORMATTING UTILITIES ====================
+// ==================== UTILITY FUNCTIONS ====================
 
 /**
- * Format numeric value for display
+ * Format numeric value with intelligent notation
  * @param {number} value - Numeric value
  * @param {number} precision - Decimal precision
  * @returns {string} Formatted value
  */
 export function formatNumericValue(value, precision = 2) {
-  if (value === null || value === undefined || isNaN(value)) {
-    return 'N/A'
+  if (typeof value !== 'number' || isNaN(value)) {
+    return '0'
   }
 
   const absValue = Math.abs(value)
 
   if (absValue >= 1000000) {
-    return `${(value / 1000000).toFixed(precision)}M`
+    return (value / 1000000).toFixed(precision) + 'M'
   } else if (absValue >= 1000) {
-    return `${(value / 1000).toFixed(precision)}K`
-  } else if (absValue < 0.01 && absValue > 0) {
-    return value.toExponential(precision)
+    return (value / 1000).toFixed(precision) + 'K'
   } else {
     return value.toFixed(precision)
   }
 }
 
 /**
- * Format window period for display
- * @param {Object} windowInfo - Window information object
- * @returns {string} Formatted window period
- */
-export function formatWindowPeriod(windowInfo) {
-  if (!windowInfo) return 'Auto'
-
-  try {
-    if (windowInfo.window_period) {
-      return windowInfo.window_period
-    }
-
-    if (windowInfo.window_seconds) {
-      const seconds = windowInfo.window_seconds
-      if (seconds >= 3600) {
-        return `${(seconds / 3600).toFixed(1)}h`
-      } else if (seconds >= 60) {
-        return `${(seconds / 60).toFixed(1)}m`
-      } else {
-        return `${seconds.toFixed(1)}s`
-      }
-    }
-
-    return 'Auto'
-  } catch (error) {
-    console.warn('⚠️ Window period formatting error:', error)
-    return 'Error'
-  }
-}
-
-// ==================== VALIDATION UTILITIES ====================
-
-/**
- * Validate Chart.js data structure
- * @param {Object} chartData - Chart.js data object
- * @returns {Object} Validation result
- */
-export function validateChartData(chartData) {
-  const issues = []
-
-  try {
-    // Check basic structure
-    if (!chartData || typeof chartData !== 'object') {
-      issues.push('Chart data must be an object')
-      return { valid: false, issues }
-    }
-
-    // Check labels
-    if (!Array.isArray(chartData.labels)) {
-      issues.push('Labels must be an array')
-    } else if (chartData.labels.length === 0) {
-      issues.push('No data labels provided')
-    }
-
-    // Check datasets
-    if (!Array.isArray(chartData.datasets)) {
-      issues.push('Datasets must be an array')
-    } else if (chartData.datasets.length === 0) {
-      issues.push('No datasets provided')
-    } else {
-      // Validate each dataset
-      chartData.datasets.forEach((dataset, index) => {
-        if (!Array.isArray(dataset.data)) {
-          issues.push(`Dataset ${index}: Data must be an array`)
-        } else if (dataset.data.length === 0) {
-          issues.push(`Dataset ${index}: No data points`)
-        } else if (chartData.labels.length > 0 && dataset.data.length !== chartData.labels.length) {
-          issues.push(`Dataset ${index}: Data length (${dataset.data.length}) doesn't match labels length (${chartData.labels.length})`)
-        }
-      })
-    }
-
-    return { valid: issues.length === 0, issues }
-
-  } catch (error) {
-    console.error('❌ Chart data validation error:', error)
-    return { valid: false, issues: [`Validation error: ${error.message}`] }
-  }
-}
-
-// ==================== MOCK DATA GENERATION ====================
-
-/**
  * Generate mock chart data for testing
  * @param {Object} options - Mock data options
- * @returns {Object} Mock Chart.js data
+ * @returns {Object} Mock chart data
  */
 export function generateMockChartData(options = {}) {
   const {
     pointCount = 50,
-    signalCount = 2,
-    signalNames = ['Temperature', 'Humidity'],
-    units = ['°C', '%'],
-    timeRange = {
-      start: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-      end: new Date().toISOString()
-    }
+    signalCount = 1,
+    timeRange = 24 * 60 * 60 * 1000, // 24 hours
+    baseValue = 50,
+    variance = 20
   } = options
 
-  // Generate time series labels
-  const startTime = new Date(timeRange.start)
-  const endTime = new Date(timeRange.end)
-  const timeStep = (endTime - startTime) / (pointCount - 1)
+  const startTime = new Date()
+  const timeStep = timeRange / pointCount
 
   const labels = Array.from({ length: pointCount }, (_, i) =>
     new Date(startTime.getTime() + i * timeStep)
   )
 
-  // Generate datasets
-  const datasets = Array.from({ length: signalCount }, (_, i) => ({
-    label: signalNames[i] || `Signal ${i + 1}`,
-    data: labels.map((label, j) => ({
-      x: label,
-      y: Math.random() * 100 + 50 + Math.sin(j / 10) * 20
+  const datasets = Array.from({ length: signalCount }, (_, signalIndex) => ({
+    label: `Signal ${signalIndex + 1}`,
+    data: labels.map((time, i) => ({
+      x: time,
+      y: baseValue + Math.sin(i * 0.1) * variance + (Math.random() - 0.5) * 10
     })),
-    borderColor: getSignalColor(i),
-    backgroundColor: getSignalColor(i, 0.1),
+    borderColor: getSignalColor(signalIndex),
+    backgroundColor: 'transparent',
     borderWidth: 2,
-    fill: false,
     tension: 0.1,
-    pointRadius: 3,
-    unit: units[i] || '',
-    ...getLineStyle(null, i)
+    pointRadius: 2
   }))
 
   return {
@@ -529,34 +560,9 @@ export function generateMockChartData(options = {}) {
     datasets,
     isEmpty: false,
     metadata: {
-      totalPoints: pointCount,
-      timeRange: timeRange,
-      mock: true
+      totalPoints: pointCount * signalCount,
+      timeRange: { start: startTime, end: labels[labels.length - 1] },
+      isMockData: true
     }
   }
-}
-
-// ==================== EXPORTS ====================
-
-export default {
-  // Core transformation
-  transformWidgetDataToChart,
-
-  // Styling utilities
-  getSignalColor,
-  formatSignalLabel,
-
-  // Formatting utilities
-  formatNumericValue,
-  formatWindowPeriod,
-
-  // Validation
-  validateChartData,
-
-  // Mock data
-  generateMockChartData,
-
-  // Constants
-  CHART_COLORS,
-  LINE_STYLES
 }
