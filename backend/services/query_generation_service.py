@@ -80,11 +80,13 @@ class QueryGenerationService:
             
             for equipment_id in equipment_ids:
                 equipment = meta_crud.get_equipment_by_id(db, equipment_id)
+                model_info = meta_crud.get_master_model_by_id(db,equipment.model_id)
                 if equipment:
                     equipment_info.append({
                         'id': equipment_id,
                         'name': equipment.name,
-                        'location': equipment.location
+                        'location': equipment.location,
+                        'model_name':model_info.name    # bms or rbms floder partation equipment=rbms
                     })
             
             for signal_id in signal_ids:
@@ -121,6 +123,7 @@ class QueryGenerationService:
                     equipment_info, signal_info, filter_selections, time_range, connection_config, window_info
                 )
             elif data_source_type.lower() == 'parquet':
+                
                 success, query = QueryGenerationService._generate_parquet_query_with_window(
                     equipment_info, signal_info, filter_selections, time_range, connection_config, window_info
                 )
@@ -199,13 +202,15 @@ class QueryGenerationService:
     
    
     @staticmethod
-    def _generate_parquet_query(equipment_info: List[Dict], signal_info: List[Dict], 
-                              filter_selections: Dict, time_range: Dict, connection_config: Dict) -> Tuple[bool, str]:
-        """Generate Parquet/DuckDB query from metadata"""
+    def _generate_parquet_query_with_window(equipment_info: List[Dict], signal_info: List[Dict], 
+                                            filter_selections: Dict, time_range: Dict, 
+                                            connection_config: Dict, window_info: Dict) -> Tuple[bool, str]:
+        """Generate Parquet/DuckDB query with time_bucket aggregation"""
         try:
-            # Extract time range
+            # Extract time range and window
             time_start = time_range.get('start', '')
             time_end = time_range.get('end', '')
+            window_seconds = window_info.get('window_seconds', 3600)
             
             if not time_start or not time_end:
                 return False, "Time range start and end are required"
@@ -215,24 +220,28 @@ class QueryGenerationService:
             if not base_path:
                 return False, "Base path not found in connection config"
             
-            # Build SELECT clause with signals
-            select_columns = ['t_sampling_time AS timestamp']
-            signal_keys = []
+            # Build SELECT clause with time_bucket and signal aggregation
+            select_columns = [
+                f"time_bucket(INTERVAL '{window_seconds} seconds', CAST(t_sampling_time AS TIMESTAMP), TIMESTAMP '{time_start}') AS timestamp"
+            ]
             
+            signal_keys = []
             for signal in signal_info:
                 signal_key = signal['key']
                 signal_keys.append(signal_key)
-                # Use signal value or key as column alias
+                # Use signal value or key as column alias with AVG aggregation
                 signal_alias = signal.get('value') or signal_key
-                select_columns.append(f"{signal_key} AS \"{signal_alias}\"")
+                select_columns.append(f"AVG({signal_key}) AS \"{signal_alias}\"")
             
             select_clause = "SELECT " + ", ".join(select_columns)
             
             # Build parquet file path pattern
-            # Assume equipment name maps to parquet equipment partition
+            # FIXED: Handle Windows paths with proper escaping and normalization
             if equipment_info:
-                equipment_name = equipment_info[0]['name'].lower()
-                parquet_pattern = f"{base_path}/**/equipment={equipment_name}/dcu=*/*.parquet"
+                equipment_name = equipment_info[0]['model_name'].lower()
+                # Normalize path separators for cross-platform compatibility
+                normalized_base_path = base_path.replace('\\', '/')
+                parquet_pattern = f"{normalized_base_path}/**/equipment={equipment_name}/dcu=*/*.parquet"
             else:
                 return False, "No equipment specified"
             
@@ -242,19 +251,36 @@ class QueryGenerationService:
                 f"t_sampling_time <= '{time_end}'"
             ]
             
-            # Add filter selections
+            # FIXED: Process filter_selections correctly
+            # Extract filter key after the number prefix (e.g., "1_n_bank" -> "n_bank")
             for equipment_key, filters in filter_selections.items():
-                for filter_key, filter_value in filters.items():
-                    where_conditions.append(f"{filter_key} = '{filter_value}'")
+                if isinstance(filters, dict):
+                    # If filters is a dictionary, iterate through key-value pairs
+                    for filter_key, filter_value in filters.items():
+                        # Extract the actual filter name after the number prefix
+                        if '_' in filter_key:
+                            actual_filter_key = '_'.join(filter_key.split('_')[1:])  # Remove number prefix
+                        else:
+                            actual_filter_key = filter_key
+                        where_conditions.append(f"{actual_filter_key} = '{filter_value}'")
+                else:
+                    # If filters is a single value, use equipment_key as the filter
+                    # Extract the actual filter name after the number prefix
+                    if '_' in equipment_key:
+                        actual_filter_key = '_'.join(equipment_key.split('_')[1:])  # Remove number prefix
+                    else:
+                        actual_filter_key = equipment_key
+                    where_conditions.append(f"{actual_filter_key} = '{filters}'")
             
             where_clause = "WHERE " + " AND ".join(where_conditions)
             
-            # Build DuckDB query for parquet files
+            # Build DuckDB query for parquet files with GROUP BY for time_bucket
             query = f"""
             {select_clause}
             FROM read_parquet('{parquet_pattern}')
             {where_clause}
-            ORDER BY t_sampling_time ASC
+            GROUP BY 1
+            ORDER BY timestamp ASC
             """
             
             return True, query.strip()

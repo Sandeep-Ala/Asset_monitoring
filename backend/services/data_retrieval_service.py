@@ -245,9 +245,13 @@ class DataRetrievalService:
                 return False, {}, "Widget not found"
             
             widget_config = widget_to_dict(widget)
+            print(f'widget_config:{widget_config}')
             
             # Validate widget metadata
             is_valid, errors = QueryGenerationService.validate_widget_metadata(db, widget_config)
+            print(f'is_valid:{is_valid}')
+            print(f'errors:{errors}')
+            
             if not is_valid:
                 return False, {}, f"Widget validation errors: {'; '.join(errors)}"
             

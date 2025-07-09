@@ -405,8 +405,8 @@ class WidgetDataRoutes:
         
         # Validate time range
         time_range = {
-            "start": time_request.time_start,
-            "end": time_request.time_end,
+            "start": "2025-03-07T04:52:00.000Z",
+            "end": "2025-03-08T05:52:00.000Z",
             "range_type": time_request.time_range_type
         }
         
@@ -416,7 +416,7 @@ class WidgetDataRoutes:
         
         # Get widget data with window period
         success, data, error_msg = DataRetrievalService.get_widget_data_with_window(
-            self.db, widget_id, time_range, time_request.window_period, connection_id
+            self.db, widget_id, time_range, 'auto', connection_id
         )
         
         if success:

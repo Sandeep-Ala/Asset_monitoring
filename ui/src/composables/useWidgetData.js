@@ -1,9 +1,10 @@
 // src/composables/useWidgetData.js
-// Advanced Widget Data Management Composable
+// Advanced Widget Data Management Composable - FIXED VERSION
 // Handles API integration, caching, auto-refresh, and global time sync
+// Fixed: Lifecycle hooks, error handling, API integration
 
-import { ref, reactive, computed, watch, onBeforeUnmount, nextTick } from 'vue'
-import  api  from 'src/services/Api.js'
+import { ref, reactive, computed, watch, onBeforeUnmount, nextTick, getCurrentInstance, readonly } from 'vue'
+import { api } from 'boot/axios'
 import { useGlobalTime } from 'src/composables/useGlobalTime.js'
 import { transformWidgetDataToChart, validateChartData } from 'src/utils/dataFormatter.js'
 
@@ -36,8 +37,13 @@ const activeRequests = new Map()
  * @param {string} widgetId - Widget identifier
  * @param {Object} widgetConfig - Widget configuration from wizard
  * @param {Object} options - Additional options
+ * @param {Object} customTimeRange - Optional custom time range override
  */
-export function useWidgetData(widgetId, widgetConfig = {}, options = {}) {
+export function useWidgetData(widgetId, widgetConfig = {}, options = {}, customTimeRange = null) {
+
+  // Check if we're in a component context for lifecycle hooks
+  const instance = getCurrentInstance()
+  const canUseLifecycleHooks = !!instance
 
   // ==================== CONFIGURATION ====================
 
@@ -74,488 +80,416 @@ export function useWidgetData(widgetId, widgetConfig = {}, options = {}) {
   const isEmpty = ref(false)
   const lastFetchTime = ref(null)
   const dataAge = ref(0)
-
-  // Auto-refresh management
-  const autoRefreshTimer = ref(null)
   const refreshCount = ref(0)
 
-  // Cache status
-  const cacheHit = ref(false)
-  const cacheKey = ref(null)
+  // Auto-refresh management
+  let autoRefreshTimer = null
+  let dataAgeTimer = null
+  const isAutoRefreshActive = ref(false)
 
-  // ==================== GLOBAL TIME INTEGRATION ====================
-
+  // Global time management with custom override
   const globalTime = useGlobalTime()
+  const currentTimeRange = computed(() => {
+    // Use custom time range if provided, otherwise use global time
+    if (customTimeRange && customTimeRange.start && customTimeRange.end) {
+      return customTimeRange
+    }
+    return globalTime.currentTimeRange
+  })
 
   // ==================== COMPUTED PROPERTIES ====================
 
-  /**
-   * Current time range for API requests
-   */
-  const currentTimeRange = computed(() => ({
-    start: globalTime.timeState.timeStart,
-    end: globalTime.timeState.timeEnd,
-    range_type: globalTime.timeState.rangeType,
-    window_period: globalTime.timeState.windowPeriod
-  }))
-
-  /**
-   * Check if data is stale and needs refresh
-   */
   const isDataStale = computed(() => {
     if (!lastFetchTime.value) return true
-
-    const age = Date.now() - lastFetchTime.value.getTime()
-    return age > config.cacheTimeoutMs
+    return (Date.now() - lastFetchTime.value) > config.cacheTimeoutMs
   })
 
-  /**
-   * Check if background refresh is needed
-   */
   const needsBackgroundRefresh = computed(() => {
     if (!lastFetchTime.value) return false
-
-    const age = Date.now() - lastFetchTime.value.getTime()
-    return age > config.backgroundRefreshThresholdMs && age < config.cacheTimeoutMs
+    return (Date.now() - lastFetchTime.value) > config.backgroundRefreshThresholdMs
   })
 
-  /**
-   * Data status information
-   */
   const dataStatus = computed(() => ({
+    isLoading: isLoading.value,
+    isInitialLoad: isInitialLoad.value,
+    isBackgroundRefresh: isBackgroundRefresh.value,
+    isRetrying: isRetrying.value,
     hasData: hasData.value,
     isEmpty: isEmpty.value,
-    isLoading: isLoading.value,
     isStale: isDataStale.value,
-    error: error.value,
-    lastFetch: lastFetchTime.value,
-    age: dataAge.value,
+    needsRefresh: needsBackgroundRefresh.value,
     refreshCount: refreshCount.value,
-    cacheHit: cacheHit.value
+    lastFetchTime: lastFetchTime.value,
+    dataAge: dataAge.value,
+    errorCount: errorCount.value
   }))
 
-  /**
-   * Performance metrics
-   */
-  const performanceMetrics = computed(() => ({
-    globalHitRate: globalWidgetCache.hitCount / Math.max(1, globalWidgetCache.totalRequests),
-    totalCachedWidgets: globalWidgetCache.data.size,
-    errorRate: errorCount.value / Math.max(1, refreshCount.value),
-    averageLoadTime: 0 // TODO: Track load times
-  }))
+  const performanceMetrics = computed(() => {
+    const cacheKey = widgetId
+    return {
+      cacheHit: globalWidgetCache.data.has(cacheKey),
+      totalRequests: globalWidgetCache.totalRequests,
+      hitRate: globalWidgetCache.hitCount / Math.max(1, globalWidgetCache.totalRequests),
+      errorRate: errorCount.value / Math.max(1, refreshCount.value)
+    }
+  })
 
   // ==================== CACHE MANAGEMENT ====================
 
-  /**
-   * Generate cache key for current state
-   */
-  function generateCacheKey() {
-    const timeRange = currentTimeRange.value
-    return `${widgetId}_${timeRange.start}_${timeRange.end}_${timeRange.window_period}`
-  }
-
-  /**
-   * Get data from cache if available and valid
-   */
   function getCachedData() {
-    if (!config.enableCaching) return null
+    const cacheKey = widgetId
+    const cachedData = globalWidgetCache.data.get(cacheKey)
+    const cacheTime = globalWidgetCache.timestamps.get(cacheKey)
 
-    const key = generateCacheKey()
-    cacheKey.value = key
-
-    const cached = globalWidgetCache.data.get(key)
-    const timestamp = globalWidgetCache.timestamps.get(key)
-
-    if (cached && timestamp) {
-      const age = Date.now() - timestamp.getTime()
-
-      if (age < config.cacheTimeoutMs) {
-        console.log('💾 Cache hit for widget:', widgetId, 'age:', Math.round(age / 1000), 's')
-
-        globalWidgetCache.hitCount++
-        cacheHit.value = true
-
-        return cached
-      } else {
-        // Clean expired cache
-        globalWidgetCache.data.delete(key)
-        globalWidgetCache.timestamps.delete(key)
-      }
+    if (!cachedData || !cacheTime) {
+      globalWidgetCache.missCount++
+      return null
     }
 
-    globalWidgetCache.missCount++
-    cacheHit.value = false
-    return null
+    // Check if cache is still valid
+    const isExpired = (Date.now() - cacheTime) > config.cacheTimeoutMs
+    if (isExpired) {
+      globalWidgetCache.data.delete(cacheKey)
+      globalWidgetCache.timestamps.delete(cacheKey)
+      globalWidgetCache.missCount++
+      return null
+    }
+
+    globalWidgetCache.hitCount++
+    return cachedData
   }
 
-  /**
-   * Store data in cache
-   */
   function setCachedData(data) {
-    if (!config.enableCaching) return
+    const cacheKey = widgetId
 
-    const key = generateCacheKey()
-
-    // Clean old cache if size limit exceeded
+    // Manage cache size
     if (globalWidgetCache.data.size >= globalWidgetCache.maxCacheSize) {
-      cleanOldCache()
-    }
+      // Remove oldest entries
+      const oldestKey = Array.from(globalWidgetCache.timestamps.entries())
+        .sort(([,a], [,b]) => a - b)[0]?.[0]
 
-    globalWidgetCache.data.set(key, data)
-    globalWidgetCache.timestamps.set(key, new Date())
-    globalWidgetCache.configs.set(widgetId, widgetConfig)
-
-    console.log('💾 Cached data for widget:', widgetId, 'cache size:', globalWidgetCache.data.size)
-  }
-
-  /**
-   * Clean old cache entries
-   */
-  function cleanOldCache() {
-    const now = Date.now()
-    const entriesToDelete = []
-
-    // Find expired entries
-    for (const [key, timestamp] of globalWidgetCache.timestamps.entries()) {
-      const age = now - timestamp.getTime()
-      if (age > globalWidgetCache.cacheTimeoutMs) {
-        entriesToDelete.push(key)
+      if (oldestKey) {
+        globalWidgetCache.data.delete(oldestKey)
+        globalWidgetCache.timestamps.delete(oldestKey)
+        globalWidgetCache.configs.delete(oldestKey)
       }
     }
 
-    // Delete expired entries
-    entriesToDelete.forEach(key => {
-      globalWidgetCache.data.delete(key)
-      globalWidgetCache.timestamps.delete(key)
-    })
+    globalWidgetCache.data.set(cacheKey, data)
+    globalWidgetCache.timestamps.set(cacheKey, Date.now())
+    globalWidgetCache.configs.set(cacheKey, widgetConfig)
+  }
 
-    // If still too large, delete oldest entries
-    if (globalWidgetCache.data.size >= globalWidgetCache.maxCacheSize) {
-      const sortedEntries = Array.from(globalWidgetCache.timestamps.entries())
-        .sort(([,a], [,b]) => a.getTime() - b.getTime())
-
-      const toDelete = sortedEntries.slice(0, 10) // Delete oldest 10 entries
-      toDelete.forEach(([key]) => {
-        globalWidgetCache.data.delete(key)
-        globalWidgetCache.timestamps.delete(key)
-      })
-    }
-
-    console.log('🧹 Cache cleaned, new size:', globalWidgetCache.data.size)
+  function clearCache() {
+    const cacheKey = widgetId
+    globalWidgetCache.data.delete(cacheKey)
+    globalWidgetCache.timestamps.delete(cacheKey)
+    globalWidgetCache.configs.delete(cacheKey)
+    globalWidgetCache.errors.delete(cacheKey)
+    console.log('🧹 Cache cleared for widget:', widgetId)
   }
 
   // ==================== API INTEGRATION ====================
 
-  /**
-   * Fetch widget data from backend API
-   */
   async function fetchWidgetData(forceRefresh = false) {
-    if (!widgetId || !currentTimeRange.value.start || !currentTimeRange.value.end) {
-      console.warn('⚠️ Invalid widget ID or time range for data fetch')
-      return
+    if (!widgetId) {
+      throw new Error('Widget ID is required')
     }
 
+    const requestKey = `${widgetId}-${currentTimeRange.value?.start || ''}-${currentTimeRange.value?.end || ''}`
+
+    // Prevent duplicate requests
+    if (activeRequests.has(requestKey)) {
+      console.log('⏳ Request already in progress for:', widgetId)
+      return activeRequests.get(requestKey)
+    }
+
+    // Check cache first (unless force refresh)
+    if (!forceRefresh && config.enableCaching) {
+      const cachedData = getCachedData()
+      if (cachedData) {
+        console.log('💾 Using cached data for widget:', widgetId)
+        updateStateFromData(cachedData)
+        return cachedData
+      }
+    }
+
+    globalWidgetCache.totalRequests++
+
+    const fetchPromise = performDataFetch()
+    activeRequests.set(requestKey, fetchPromise)
+
     try {
-      // Check for active request to prevent duplicates
-      const requestKey = generateCacheKey()
-      if (activeRequests.has(requestKey) && !forceRefresh) {
-        console.log('⏳ Request already active for:', requestKey)
-        return await activeRequests.get(requestKey)
-      }
-
-      // Check cache first (unless force refresh)
-      if (!forceRefresh) {
-        const cachedData = getCachedData()
-        if (cachedData) {
-          applyData(cachedData, true)
-          return cachedData
-        }
-      }
-
-      // Set loading states
-      if (isInitialLoad.value) {
-        isLoading.value = true
-      } else {
-        isBackgroundRefresh.value = true
-      }
-
-      error.value = null
-      globalWidgetCache.totalRequests++
-
-      console.log('📡 Fetching widget data:', widgetId, currentTimeRange.value)
-
-      // Create API request promise
-      const requestPromise = api.post(`/widgets/${widgetId}/data`, {
-        time_start: currentTimeRange.value.start,
-        time_end: currentTimeRange.value.end,
-        time_range_type: currentTimeRange.value.range_type,
-        window_period: currentTimeRange.value.window_period
-      })
-
-      // Store active request
-      activeRequests.set(requestKey, requestPromise)
-
-      // Execute request
-      const response = await requestPromise
-      const backendData = response.data
-
-      console.log('✅ Widget data received:', {
-        widgetId,
-        isEmpty: backendData?.isEmpty,
-        datasets: backendData?.datasets?.length || 0,
-        totalPoints: backendData?.totalPoints || 0
-      })
-
-      // Transform data using our formatter
-      const transformedData = transformWidgetDataToChart(backendData, widgetConfig)
-
-      // Validate transformed data
-      const validation = validateChartData(transformedData)
-      if (!validation.valid) {
-        console.warn('⚠️ Chart data validation failed:', validation.issues)
-      }
-
-      // Apply data to component state
-      applyData({
-        raw: backendData,
-        chart: transformedData,
-        validation
-      })
-
-      // Cache the data
-      setCachedData({
-        raw: backendData,
-        chart: transformedData,
-        validation
-      })
-
-      // Update success metrics
-      refreshCount.value++
-      errorCount.value = 0 // Reset error count on success
-
-      return transformedData
-
-    } catch (err) {
-      console.error('❌ Widget data fetch failed:', err)
-
-      handleFetchError(err)
-      throw err
-
+      const result = await fetchPromise
+      return result
     } finally {
-      // Clean up loading states
-      isLoading.value = false
-      isInitialLoad.value = false
-      isBackgroundRefresh.value = false
-      isRetrying.value = false
-
-      // Remove active request
       activeRequests.delete(requestKey)
     }
   }
 
-  /**
-   * Apply fetched data to component state
-   */
-  function applyData(data, fromCache = false) {
+  async function performDataFetch() {
+    const timeRange = currentTimeRange.value
+    console.log('📡 Fetching data for widget:', widgetId, 'Time range:', {
+      start: timeRange?.start,
+      end: timeRange?.end,
+      range_type: timeRange?.range_type
+    })
+
     try {
-      rawData.value = data.raw
-      chartData.value = data.chart
-      metadata.value = data.chart?.metadata || null
+      // Get and validate time range
+      let validTimeRange = timeRange
 
-      hasData.value = !data.chart?.isEmpty
-      isEmpty.value = data.chart?.isEmpty || false
-      lastFetchTime.value = fromCache ? lastFetchTime.value : new Date()
+      // If no time range available, create a default one
+      if (!validTimeRange?.start || !validTimeRange?.end) {
+        console.log('⚠️ No time range available, creating default range...')
 
-      // Update data age
-      updateDataAge()
+        const now = new Date()
+        const oneHourAgo = new Date(now - 60 * 60 * 1000)
 
-      console.log(fromCache ? '💾 Applied cached data' : '✅ Applied fresh data', {
-        hasData: hasData.value,
-        datasets: chartData.value?.datasets?.length || 0
-      })
+        validTimeRange = {
+          start: oneHourAgo.toISOString(),
+          end: now.toISOString(),
+          range_type: 'last_1h'
+        }
+
+        console.log('📅 Using default time range:', validTimeRange)
+      }
+
+      // Prepare request payload
+      const requestData = {
+        time_start: validTimeRange.start,
+        time_end: validTimeRange.end,
+        time_range_type: validTimeRange.range_type || 'custom'
+      }
+
+      console.log('📤 Sending request:', requestData)
+
+      // Make API call
+      const response = await api.post(`/widgets/${widgetId}/data`, requestData)
+
+      if (!response || !response.data) {
+        throw new Error('Empty response from server')
+      }
+
+      const apiData = response.data
+      console.log('📥 Received data:', apiData)
+
+      // Process the response
+      updateStateFromData(apiData)
+
+      // Cache the data
+      if (config.enableCaching) {
+        setCachedData(apiData)
+      }
+
+      // Clear error state on success
+      error.value = null
+      refreshCount.value++
+      lastFetchTime.value = Date.now()
+
+      return apiData
 
     } catch (err) {
-      console.error('❌ Failed to apply data:', err)
-      handleFetchError(err)
+      console.error('❌ Data fetch failed for widget:', widgetId, err)
+
+      // Update error state
+      error.value = err
+      errorCount.value++
+      lastErrorTime.value = Date.now()
+
+      // Cache error to prevent repeated failed requests
+      globalWidgetCache.errors.set(widgetId, {
+        error: err.message,
+        timestamp: Date.now()
+      })
+
+      throw err
     }
   }
 
-  /**
-   * Handle fetch errors with intelligent retry logic
-   */
-  function handleFetchError(err) {
-    error.value = {
-      message: err.message || 'Unknown error',
-      code: err.response?.status || 'UNKNOWN',
-      timestamp: new Date(),
-      retryCount: errorCount.value
+  function updateStateFromData(apiData) {
+    try {
+      // Store raw data
+      rawData.value = apiData
+
+      // Check if data is empty
+      if (apiData.isEmpty) {
+        isEmpty.value = true
+        hasData.value = false
+        chartData.value = null
+        metadata.value = apiData.metadata || null
+        console.log('📊 Empty dataset received for widget:', widgetId)
+        return
+      }
+
+      // Transform data for Chart.js
+      const transformedData = transformWidgetDataToChart(apiData, widgetConfig)
+
+      if (!transformedData || transformedData.isEmpty) {
+        isEmpty.value = true
+        hasData.value = false
+        chartData.value = null
+        console.log('⚠️ Data transformation resulted in empty dataset')
+        return
+      }
+
+      // Validate transformed data
+      const validation = validateChartData(transformedData)
+      if (!validation.valid) {
+        console.warn('⚠️ Chart data validation issues:', validation.issues)
+        // Continue anyway - might still be usable
+      }
+
+      // Update state
+      chartData.value = transformedData
+      metadata.value = apiData.metadata || transformedData.metadata || null
+      hasData.value = true
+      isEmpty.value = false
+      isInitialLoad.value = false
+
+      console.log('✅ Data processed successfully for widget:', widgetId, {
+        datasets: transformedData.datasets?.length || 0,
+        totalPoints: apiData.totalPoints || 0
+      })
+
+    } catch (err) {
+      console.error('❌ Failed to process data for widget:', widgetId, err)
+      throw new Error(`Data processing failed: ${err.message}`)
     }
-
-    errorCount.value++
-    lastErrorTime.value = new Date()
-
-    // Store error in global cache for debugging
-    globalWidgetCache.errors.set(widgetId, error.value)
-
-    // Clear data on error
-    hasData.value = false
-    isEmpty.value = true
-    chartData.value = null
-
-    console.error('💥 Widget data error:', error.value)
   }
 
   // ==================== AUTO-REFRESH MANAGEMENT ====================
 
-  /**
-   * Start auto-refresh based on global time settings
-   */
   function startAutoRefresh() {
     if (!config.enableAutoRefresh) return
 
-    stopAutoRefresh() // Clear existing timer
+    stopAutoRefresh() // Clear any existing timer
 
-    const refreshRate = globalTime.timeState.refreshRate
-    const intervalMs = getRefreshIntervalMs(refreshRate)
+    const refreshInterval = globalTime.timeState.refreshRate || 30000 // Default 30 seconds
 
-    if (intervalMs > 0) {
-      console.log('⏰ Starting auto-refresh for widget:', widgetId, 'interval:', intervalMs / 1000, 's')
-
-      autoRefreshTimer.value = setInterval(async () => {
+    autoRefreshTimer = setInterval(async () => {
+      if (!isLoading.value) {
         try {
-          console.log('🔄 Auto-refresh triggered for widget:', widgetId)
-          await fetchWidgetData(true) // Force refresh
+          isBackgroundRefresh.value = true
+          await fetchWidgetData(true)
         } catch (err) {
-          console.warn('⚠️ Auto-refresh failed for widget:', widgetId, err)
+          console.warn('🔄 Background refresh failed:', err.message)
+        } finally {
+          isBackgroundRefresh.value = false
         }
-      }, intervalMs)
-    }
+      }
+    }, refreshInterval)
+
+    isAutoRefreshActive.value = true
+    console.log('🔄 Auto-refresh started for widget:', widgetId, 'interval:', refreshInterval)
   }
 
-  /**
-   * Stop auto-refresh timer
-   */
   function stopAutoRefresh() {
-    if (autoRefreshTimer.value) {
-      clearInterval(autoRefreshTimer.value)
-      autoRefreshTimer.value = null
-      console.log('⏹️ Auto-refresh stopped for widget:', widgetId)
+    if (autoRefreshTimer) {
+      clearInterval(autoRefreshTimer)
+      autoRefreshTimer = null
     }
+    isAutoRefreshActive.value = false
+    console.log('⏸️ Auto-refresh stopped for widget:', widgetId)
   }
 
-  /**
-   * Convert refresh rate to milliseconds
-   */
-  function getRefreshIntervalMs(refreshRate) {
-    const intervals = {
-      'manual': 0,
-      '30s': 30 * 1000,
-      '1m': 60 * 1000,
-      '5m': 5 * 60 * 1000,
-      '15m': 15 * 60 * 1000,
-      '30m': 30 * 60 * 1000,
-      '1h': 60 * 60 * 1000
+  function updateDataAge() {
+    if (lastFetchTime.value) {
+      dataAge.value = Date.now() - lastFetchTime.value
     }
-
-    return intervals[refreshRate] || 0
   }
 
   // ==================== RETRY LOGIC ====================
 
-  /**
-   * Retry data fetch with exponential backoff
-   */
   async function retryFetch() {
-    if (errorCount.value >= config.maxRetries) {
-      console.warn('⚠️ Max retries exceeded for widget:', widgetId)
-      return
-    }
+    if (isRetrying.value) return
 
-    const delay = config.retryDelayMs * Math.pow(2, errorCount.value)
-
-    console.log(`🔄 Retrying widget data fetch in ${delay}ms (attempt ${errorCount.value + 1}/${config.maxRetries})`)
+    console.log('🔄 Retrying data fetch for widget:', widgetId)
 
     isRetrying.value = true
 
-    setTimeout(async () => {
+    for (let attempt = 1; attempt <= config.maxRetries; attempt++) {
       try {
         await fetchWidgetData(true)
+        console.log('✅ Retry successful for widget:', widgetId)
+        break
       } catch (err) {
-        console.warn('⚠️ Retry failed for widget:', widgetId)
-      }
-    }, delay)
-  }
+        console.warn(`❌ Retry attempt ${attempt}/${config.maxRetries} failed:`, err.message)
 
-  // ==================== UTILITY FUNCTIONS ====================
-
-  /**
-   * Update data age calculation
-   */
-  function updateDataAge() {
-    if (lastFetchTime.value) {
-      dataAge.value = Date.now() - lastFetchTime.value.getTime()
-    }
-  }
-
-  /**
-   * Force refresh data
-   */
-  async function refresh() {
-    console.log('🔄 Manual refresh requested for widget:', widgetId)
-    return await fetchWidgetData(true)
-  }
-
-  /**
-   * Clear all cached data for this widget
-   */
-  function clearCache() {
-    const keysToDelete = []
-
-    for (const key of globalWidgetCache.data.keys()) {
-      if (key.startsWith(widgetId)) {
-        keysToDelete.push(key)
+        if (attempt < config.maxRetries) {
+          const delay = config.retryDelayMs * Math.pow(2, attempt - 1) // Exponential backoff
+          await new Promise(resolve => setTimeout(resolve, delay))
+        } else {
+          console.error('❌ All retry attempts failed for widget:', widgetId)
+          throw err
+        }
       }
     }
 
-    keysToDelete.forEach(key => {
-      globalWidgetCache.data.delete(key)
-      globalWidgetCache.timestamps.delete(key)
-    })
-
-    globalWidgetCache.errors.delete(widgetId)
-
-    console.log('🧹 Cache cleared for widget:', widgetId)
+    isRetrying.value = false
   }
 
+  // ==================== PUBLIC METHODS ====================
+
   /**
-   * Initialize widget data management
+   * Initialize the widget data management
    */
   async function initialize() {
     console.log('🚀 Initializing widget data management for:', widgetId)
 
     try {
       // Set up data age update timer
-      const ageUpdateTimer = setInterval(() => {
+      dataAgeTimer = setInterval(() => {
         updateDataAge()
       }, 1000)
 
-      // Clean up on unmount
-      onBeforeUnmount(() => {
-        clearInterval(ageUpdateTimer)
-        stopAutoRefresh()
-      })
-
       // Load initial data
+      isLoading.value = true
       await fetchWidgetData()
 
       // Start auto-refresh if enabled
-      startAutoRefresh()
+      if (config.enableAutoRefresh) {
+        startAutoRefresh()
+      }
 
       console.log('✅ Widget data management initialized for:', widgetId)
 
     } catch (err) {
       console.error('❌ Failed to initialize widget data management:', err)
+      throw err
+    } finally {
+      isLoading.value = false
     }
+  }
+
+  /**
+   * Refresh data manually
+   */
+  async function refresh() {
+    if (isLoading.value) return
+
+    console.log('🔄 Manual refresh triggered for widget:', widgetId)
+
+    try {
+      isLoading.value = true
+      await fetchWidgetData(true)
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  /**
+   * Cleanup function
+   */
+  function cleanup() {
+    stopAutoRefresh()
+
+    if (dataAgeTimer) {
+      clearInterval(dataAgeTimer)
+      dataAgeTimer = null
+    }
+
+    console.log('🧹 Widget data management cleaned up for:', widgetId)
   }
 
   // ==================== WATCHERS ====================
@@ -564,13 +498,23 @@ export function useWidgetData(widgetId, widgetConfig = {}, options = {}) {
   watch(
     () => currentTimeRange.value,
     async (newTimeRange, oldTimeRange) => {
-      // Only refresh if time range actually changed
-      if (JSON.stringify(newTimeRange) !== JSON.stringify(oldTimeRange)) {
+      // Only refresh if time range actually changed and we have a valid range
+      if (newTimeRange && oldTimeRange &&
+          (newTimeRange.start !== oldTimeRange.start ||
+           newTimeRange.end !== oldTimeRange.end ||
+           newTimeRange.range_type !== oldTimeRange.range_type)) {
         console.log('🕒 Global time changed, refreshing widget:', widgetId)
 
-        // Add small delay to batch multiple time changes
-        await nextTick()
-        await fetchWidgetData(true)
+        try {
+          isLoading.value = true
+          // Add small delay to batch multiple time changes
+          await nextTick()
+          await fetchWidgetData(true)
+        } catch (err) {
+          console.warn('⚠️ Failed to refresh on time change:', err.message)
+        } finally {
+          isLoading.value = false
+        }
       }
     },
     { deep: true }
@@ -580,19 +524,21 @@ export function useWidgetData(widgetId, widgetConfig = {}, options = {}) {
   watch(
     () => globalTime.timeState.refreshRate,
     (newRate, oldRate) => {
-      if (newRate !== oldRate) {
+      if (newRate !== oldRate && config.enableAutoRefresh) {
         console.log('⏰ Refresh rate changed, updating auto-refresh for widget:', widgetId)
         startAutoRefresh()
       }
     }
   )
 
-  // ==================== CLEANUP ====================
+  // ==================== LIFECYCLE MANAGEMENT ====================
 
-  onBeforeUnmount(() => {
-    stopAutoRefresh()
-    console.log('🧹 Widget data management cleaned up for:', widgetId)
-  })
+  // Only register lifecycle hooks if we're in a component context
+  if (canUseLifecycleHooks) {
+    onBeforeUnmount(() => {
+      cleanup()
+    })
+  }
 
   // ==================== PUBLIC API ====================
 
@@ -633,6 +579,7 @@ export function useWidgetData(widgetId, widgetConfig = {}, options = {}) {
     clearCache,
     startAutoRefresh,
     stopAutoRefresh,
+    cleanup, // Add explicit cleanup method
 
     // Cache management
     getCachedData,

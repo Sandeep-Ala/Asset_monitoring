@@ -1,6 +1,6 @@
 // src/utils/dataFormatter.js
-// Advanced Data Formatter for Chart.js Integration
-// Handles backend data transformation with Grafana-level features
+// FIXED VERSION - Backend Data Structure Support
+// Handles backend data transformation with proper Chart.js format
 
 import { format, parseISO, isValid } from 'date-fns'
 
@@ -8,9 +8,10 @@ import { format, parseISO, isValid } from 'date-fns'
 
 // Professional color palette (16 colors) - Grafana inspired
 export const CHART_COLORS = [
+  '#2196F3', // Blue (matches your data)
   '#FF6B6B', // Red
   '#4ECDC4', // Teal
-  '#45B7D1', // Blue
+  '#45B7D1', // Light Blue
   '#96CEB4', // Light Green
   '#FFEAA7', // Yellow
   '#DDA0DD', // Plum
@@ -21,7 +22,6 @@ export const CHART_COLORS = [
   '#F8C471', // Orange
   '#82E0AA', // Light Green
   '#F1948A', // Pink
-  '#85C1E9', // Light Blue
   '#D7BDE2', // Light Purple
   '#A3E4D7'  // Light Cyan
 ]
@@ -35,15 +35,11 @@ export const LINE_STYLES = [
   { borderDash: [15, 3, 3, 3], label: 'dash-dot-dot' }
 ]
 
-// Chart.js point styles
-export const POINT_STYLES = [
-  'circle', 'cross', 'crossRot', 'dash', 'line', 'rect', 'rectRounded', 'rectRot', 'star', 'triangle'
-]
-
-// ==================== CORE DATA TRANSFORMATION ====================
+// ==================== CORE TRANSFORMATION ====================
 
 /**
  * Transform backend widget data to Chart.js format
+ * FIXED: Now handles backend structure with separate labels and datasets arrays
  * @param {Object} backendData - Data from /widgets/{widget_id}/data endpoint
  * @param {Object} widgetConfig - Widget configuration from wizard
  * @param {Object} options - Additional formatting options
@@ -74,22 +70,24 @@ export function transformWidgetDataToChart(backendData, widgetConfig = {}, optio
       }
     }
 
-    // Extract styling configuration
-    const stylingConfig = widgetConfig?.styling_config || {}
-    const globalOptions = {
-      showPoints: stylingConfig.show_points !== false,
-      fillArea: stylingConfig.fill_area || false,
-      lineWidth: stylingConfig.line_width || 2,
-      pointRadius: stylingConfig.point_radius || 3,
-      tension: stylingConfig.curve_smooth || 0.1,
-      ...options
-    }
+    // Extract labels and datasets from backend
+    const backendLabels = backendData.labels || []
+    const backendDatasets = backendData.datasets || []
 
-    // Transform labels (timestamps)
-    const labels = transformTimestamps(backendData.labels)
+    console.log('📋 Processing data:', {
+      labelsCount: backendLabels.length,
+      datasetsCount: backendDatasets.length,
+      firstLabel: backendLabels[0],
+      firstDataset: backendDatasets[0]?.label
+    })
 
-    // Transform datasets (signals)
-    const datasets = transformDatasets(backendData.datasets, stylingConfig, globalOptions)
+    // Transform timestamps to Date objects for Chart.js
+    const chartLabels = transformTimestamps(backendLabels, backendData)
+
+    // Transform datasets with proper data point mapping
+    const chartDatasets = backendDatasets.map((dataset, index) => {
+      return transformDataset(dataset, chartLabels, backendLabels, index, widgetConfig, options)
+    })
 
     // Prepare metadata
     const metadata = {
@@ -102,14 +100,15 @@ export function transformWidgetDataToChart(backendData, widgetConfig = {}, optio
     }
 
     console.log('✅ Data transformation complete:', {
-      labels: labels.length,
-      datasets: datasets.length,
-      totalPoints: metadata.totalPoints
+      labels: chartLabels.length,
+      datasets: chartDatasets.length,
+      totalPoints: metadata.totalPoints,
+      firstDataPoint: chartDatasets[0]?.data[0]
     })
 
     return {
-      labels,
-      datasets,
+      labels: chartLabels,
+      datasets: chartDatasets,
       isEmpty: false,
       metadata
     }
@@ -130,350 +129,304 @@ export function transformWidgetDataToChart(backendData, widgetConfig = {}, optio
 }
 
 /**
- * Transform timestamp labels for Chart.js time scale
- * @param {Array} timestamps - Array of ISO timestamp strings
- * @returns {Array} Parsed Date objects for Chart.js
+ * Transform individual dataset with proper data point mapping
+ * @param {Object} dataset - Backend dataset object
+ * @param {Array} chartLabels - Transformed chart labels (Date objects)
+ * @param {Array} backendLabels - Original backend labels
+ * @param {number} index - Dataset index for styling
+ * @param {Object} widgetConfig - Widget configuration
+ * @param {Object} options - Additional options
+ * @returns {Object} Chart.js dataset
  */
-export function transformTimestamps(timestamps) {
+function transformDataset(dataset, chartLabels, backendLabels, index, widgetConfig = {}, options = {}) {
+  try {
+    const {
+      label = `Signal ${index + 1}`,
+      data = [],
+      unit = '',
+      borderColor,
+      backgroundColor,
+      ...otherProps
+    } = dataset
+
+    // Map data values to chart labels
+    const chartData = mapDataToLabels(data, chartLabels, backendLabels)
+
+    // Generate colors if not provided
+    const color = borderColor || getSignalColor(index)
+    const bgColor = backgroundColor || `${color}20` // Add transparency
+
+    // Extract styling configuration
+    const stylingConfig = widgetConfig?.styling_config || {}
+    const lineStyle = getLineStyle(stylingConfig?.line_style, index)
+
+    console.log(`📊 Transformed dataset "${label}":`, {
+      originalDataLength: data.length,
+      chartDataLength: chartData.length,
+      unit: unit,
+      color: color
+    })
+
+    return {
+      label: formatSignalLabel(label, unit),
+      data: chartData,
+
+      // Color and styling
+      borderColor: color,
+      backgroundColor: stylingConfig.fill_area ? bgColor : 'transparent',
+      pointBackgroundColor: color,
+      pointBorderColor: '#ffffff',
+
+      // Line styling
+      borderWidth: stylingConfig.line_width || 2,
+      tension: stylingConfig.curve_smooth || 0.1,
+      fill: stylingConfig.fill_area || false,
+
+      // Point styling
+      pointRadius: stylingConfig.show_points !== false ? (stylingConfig.point_radius || 3) : 0,
+      pointHoverRadius: stylingConfig.show_points !== false ? 6 : 0,
+      pointBorderWidth: 1,
+
+      // Line style pattern
+      ...lineStyle,
+
+      // Metadata
+      unit: unit,
+      originalLength: data.length,
+
+      // Pass through other properties
+      ...otherProps
+    }
+
+  } catch (error) {
+    console.error('❌ Dataset transformation failed:', error)
+    return {
+      label: `Error: ${dataset?.label || 'Unknown'}`,
+      data: [],
+      borderColor: '#ff0000',
+      backgroundColor: 'transparent'
+    }
+  }
+}
+
+/**
+ * Map data values to chart labels creating {x, y} objects for Chart.js
+ * @param {Array} dataValues - Array of numeric values
+ * @param {Array} chartLabels - Array of Date objects
+ * @param {Array} backendLabels - Original backend labels
+ * @returns {Array} Array of {x, y} objects for Chart.js
+ */
+function mapDataToLabels(dataValues, chartLabels, backendLabels) {
+  if (!Array.isArray(dataValues) || !Array.isArray(chartLabels)) {
+    console.warn('⚠️ Invalid data or labels for mapping:', {
+      dataValues: Array.isArray(dataValues),
+      chartLabels: Array.isArray(chartLabels)
+    })
+    return []
+  }
+
+  const minLength = Math.min(dataValues.length, chartLabels.length)
+
+  return Array.from({ length: minLength }, (_, i) => ({
+    x: chartLabels[i],
+    y: dataValues[i]
+  }))
+}
+
+/**
+ * Transform timestamp labels for Chart.js time scale
+ * @param {Array} timestamps - Array of timestamp strings (e.g., ["04:52:00", "05:07:09"])
+ * @param {Object} backendData - Backend data for context
+ * @returns {Array} Array of Date objects for Chart.js
+ */
+function transformTimestamps(timestamps, backendData = {}) {
   if (!Array.isArray(timestamps)) {
     console.warn('⚠️ Invalid timestamps array:', timestamps)
     return []
   }
 
-  return timestamps
-    .map(timestamp => {
-      try {
-        // Handle multiple timestamp formats
-        if (timestamp instanceof Date) {
-          return timestamp
-        }
+  // Get the base date from timeRange if available
+  const baseDate = getBaseDate(backendData)
 
-        if (typeof timestamp === 'string') {
+  return timestamps.map((timestamp, index) => {
+    try {
+      // Handle different timestamp formats
+      if (timestamp instanceof Date) {
+        return timestamp
+      }
+
+      if (typeof timestamp === 'string') {
+        // ISO format (with date)
+        if (timestamp.includes('T') || timestamp.includes('-')) {
           const parsed = parseISO(timestamp)
           if (isValid(parsed)) {
             return parsed
           }
-
-          // Fallback to native Date parsing
-          const fallback = new Date(timestamp)
-          if (isValid(fallback)) {
-            return fallback
-          }
         }
 
-        console.warn('⚠️ Invalid timestamp:', timestamp)
-        return null
-      } catch (error) {
-        console.warn('⚠️ Timestamp parsing error:', timestamp, error)
-        return null
-      }
-    })
-    .filter(date => date !== null)
-}
+        // Time only format (HH:mm:ss) - combine with base date
+        if (timestamp.match(/^\d{2}:\d{2}:\d{2}$/)) {
+          const [hours, minutes, seconds] = timestamp.split(':')
+          const date = new Date(baseDate)
+          date.setHours(parseInt(hours), parseInt(minutes), parseInt(seconds), 0)
+          return date
+        }
 
-/**
- * Transform backend datasets to Chart.js datasets
- * @param {Array} backendDatasets - Backend dataset array
- * @param {Object} stylingConfig - Widget styling configuration
- * @param {Object} globalOptions - Global formatting options
- * @returns {Array} Chart.js dataset array
- */
-export function transformDatasets(backendDatasets, stylingConfig = {}, globalOptions = {}) {
-  if (!Array.isArray(backendDatasets)) {
-    console.warn('⚠️ Invalid datasets array:', backendDatasets)
-    return []
-  }
-
-  return backendDatasets.map((dataset, index) => {
-    try {
-      // Extract dataset properties
-      const {
-        label = `Signal ${index + 1}`,
-        data = [],
-        unit = '',
-        borderColor,
-        backgroundColor,
-        ...otherProps
-      } = dataset
-
-      // Generate colors if not provided
-      const color = borderColor || getSignalColor(index)
-      const bgColor = backgroundColor || `${color}20` // Add transparency
-
-      // Transform data points
-      const transformedData = transformDataPoints(data)
-
-      // Apply styling with Chart.js optimizations
-      const chartDataset = {
-        label: formatSignalLabel(label, unit),
-        data: transformedData,
-
-        // Color and styling
-        borderColor: color,
-        backgroundColor: globalOptions.fillArea ? bgColor : 'transparent',
-        pointBackgroundColor: color,
-        pointBorderColor: color,
-
-        // Line styling
-        borderWidth: globalOptions.lineWidth,
-        tension: globalOptions.tension,
-        fill: globalOptions.fillArea,
-
-        // Point styling
-        pointRadius: globalOptions.showPoints ? globalOptions.pointRadius : 0,
-        pointHoverRadius: globalOptions.showPoints ? globalOptions.pointRadius + 2 : 0,
-        pointHitRadius: 10, // Larger hit area for better interaction
-
-        // Performance optimizations
-        spanGaps: true, // Connect lines across null values
-        stepped: false, // Smooth lines by default
-
-        // Hover effects
-        hoverBorderWidth: globalOptions.lineWidth + 1,
-        hoverBackgroundColor: color,
-
-        // Custom properties for legends and interactions
-        unit: unit,
-        originalLabel: label,
-        signalIndex: index,
-        datasetType: 'line',
-
-        // Apply line style variation for multiple signals
-        ...applyLineStyle(index),
-
-        // Merge any additional properties from backend
-        ...otherProps
+        // Fallback to native Date parsing
+        const fallback = new Date(timestamp)
+        if (isValid(fallback)) {
+          return fallback
+        }
       }
 
-      return chartDataset
+      console.warn(`⚠️ Could not parse timestamp at index ${index}:`, timestamp)
+      return new Date()
 
     } catch (error) {
-      console.error('❌ Dataset transformation error:', error, dataset)
-
-      // Return safe fallback dataset
-      return {
-        label: `Error: ${dataset?.label || `Signal ${index + 1}`}`,
-        data: [],
-        borderColor: CHART_COLORS[index % CHART_COLORS.length],
-        backgroundColor: 'transparent',
-        borderWidth: 1,
-        pointRadius: 0,
-        hidden: true // Hide error datasets by default
-      }
+      console.warn('⚠️ Timestamp parsing error:', timestamp, error)
+      return new Date()
     }
   })
 }
 
 /**
- * Transform individual data points for Chart.js
- * @param {Array} dataPoints - Raw data values
- * @returns {Array} Chart.js data points
+ * Get base date for time-only timestamps
+ * @param {Object} backendData - Backend data object
+ * @returns {Date} Base date to use for time-only timestamps
  */
-export function transformDataPoints(dataPoints) {
-  if (!Array.isArray(dataPoints)) {
-    console.warn('⚠️ Invalid data points:', dataPoints)
-    return []
-  }
-
-  return dataPoints.map((value, index) => {
-    try {
-      // Handle null/undefined values
-      if (value === null || value === undefined || value === '') {
-        return null
+function getBaseDate(backendData) {
+  try {
+    // Try to get date from widget_info query or timeRange
+    const queryString = backendData.widget_info?.query_executed
+    if (queryString) {
+      const dateMatch = queryString.match(/TIMESTAMP '(\d{4}-\d{2}-\d{2})/)
+      if (dateMatch) {
+        return new Date(dateMatch[1] + 'T00:00:00.000Z')
       }
-
-      // Convert to number
-      const numValue = Number(value)
-
-      // Validate number
-      if (!isFinite(numValue)) {
-        return null
-      }
-
-      return numValue
-
-    } catch (error) {
-      console.warn('⚠️ Data point conversion error:', value, error)
-      return null
     }
-  })
+
+    // Try timeRange start
+    if (backendData.timeRange?.start) {
+      return new Date(backendData.timeRange.start)
+    }
+
+    // Default to today
+    return new Date()
+  } catch (error) {
+    console.warn('⚠️ Could not determine base date:', error)
+    return new Date()
+  }
 }
 
 // ==================== STYLING UTILITIES ====================
 
 /**
- * Get color for signal by index with intelligent assignment
- * @param {number} index - Signal index
- * @returns {string} Hex color code
+ * Get signal color by index
+ * @param {number} index - Dataset index
+ * @param {number} alpha - Alpha transparency (0-1)
+ * @returns {string} Color string
  */
-export function getSignalColor(index) {
-  return CHART_COLORS[index % CHART_COLORS.length]
+export function getSignalColor(index, alpha = 1) {
+  const color = CHART_COLORS[index % CHART_COLORS.length]
+
+  if (alpha === 1) {
+    return color
+  }
+
+  // Convert hex to rgba with alpha
+  const hex = color.replace('#', '')
+  const r = parseInt(hex.substr(0, 2), 16)
+  const g = parseInt(hex.substr(2, 2), 16)
+  const b = parseInt(hex.substr(4, 2), 16)
+
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
 }
 
 /**
- * Apply line style variation for multiple signals
- * @param {number} index - Dataset index
- * @returns {Object} Line style properties
+ * Get line style configuration
+ * @param {string} styleType - Style type ('solid', 'dashed', etc.)
+ * @param {number} index - Dataset index for fallback
+ * @returns {Object} Chart.js line style configuration
  */
-export function applyLineStyle(index) {
-  const styleIndex = Math.floor(index / CHART_COLORS.length)
-  const style = LINE_STYLES[styleIndex % LINE_STYLES.length]
-
-  return {
-    borderDash: style.borderDash,
-    lineStyle: style.label
+function getLineStyle(styleType, index = 0) {
+  const styles = {
+    'solid': {},
+    'dashed': { borderDash: [5, 5] },
+    'dotted': { borderDash: [2, 2] },
+    'dashdot': { borderDash: [10, 5, 2, 5] },
+    'dashdotdot': { borderDash: [15, 3, 3, 3] }
   }
+
+  // Use specified style or default based on index
+  return styles[styleType] || LINE_STYLES[index % LINE_STYLES.length] || {}
 }
 
 /**
  * Format signal label with unit
- * @param {string} label - Signal name
+ * @param {string} label - Signal label
  * @param {string} unit - Signal unit
  * @returns {string} Formatted label
  */
-export function formatSignalLabel(label, unit) {
-  if (!label) return 'Unknown Signal'
-
-  if (unit && unit.trim()) {
-    return `${label} (${unit.trim()})`
-  }
-
-  return label
-}
-
-/**
- * Generate dataset colors for multiple signals
- * @param {number} count - Number of datasets
- * @returns {Array} Array of color objects
- */
-export function generateDatasetColors(count) {
-  const colors = []
-
-  for (let i = 0; i < count; i++) {
-    const baseColor = getSignalColor(i)
-    colors.push({
-      border: baseColor,
-      background: `${baseColor}20`,
-      point: baseColor,
-      hover: baseColor
-    })
-  }
-
-  return colors
+function formatSignalLabel(label, unit) {
+  if (!unit) return label
+  return `${label} (${unit})`
 }
 
 // ==================== FORMATTING UTILITIES ====================
 
 /**
- * Format Chart.js tooltip content
- * @param {Object} context - Chart.js tooltip context
- * @returns {string} Formatted tooltip text
- */
-export function formatTooltipValue(context) {
-  try {
-    const value = context.parsed?.y
-    const unit = context.dataset?.unit || ''
-
-    if (value === null || value === undefined) {
-      return 'No data'
-    }
-
-    // Format number with appropriate precision
-    const formattedValue = formatNumericValue(value)
-
-    return unit ? `${formattedValue} ${unit}` : formattedValue
-
-  } catch (error) {
-    console.warn('⚠️ Tooltip formatting error:', error)
-    return 'Error'
-  }
-}
-
-/**
- * Format numeric values with intelligent precision
+ * Format numeric value for display
  * @param {number} value - Numeric value
- * @returns {string} Formatted number string
+ * @param {number} precision - Decimal precision
+ * @returns {string} Formatted value
  */
-export function formatNumericValue(value) {
-  if (value === null || value === undefined || !isFinite(value)) {
+export function formatNumericValue(value, precision = 2) {
+  if (value === null || value === undefined || isNaN(value)) {
     return 'N/A'
   }
 
   const absValue = Math.abs(value)
 
-  // Very small numbers
-  if (absValue < 0.001 && absValue > 0) {
-    return value.toExponential(2)
-  }
-
-  // Small decimal numbers
-  if (absValue < 1) {
-    return value.toFixed(4)
-  }
-
-  // Regular numbers
-  if (absValue < 1000) {
-    return value.toFixed(2)
-  }
-
-  // Large numbers with K/M notation
   if (absValue >= 1000000) {
-    return `${(value / 1000000).toFixed(1)}M`
+    return `${(value / 1000000).toFixed(precision)}M`
+  } else if (absValue >= 1000) {
+    return `${(value / 1000).toFixed(precision)}K`
+  } else if (absValue < 0.01 && absValue > 0) {
+    return value.toExponential(precision)
+  } else {
+    return value.toFixed(precision)
   }
-
-  if (absValue >= 1000) {
-    return `${(value / 1000).toFixed(1)}K`
-  }
-
-  return value.toString()
 }
 
 /**
- * Format window period information for display
- * @param {Object} windowInfo - Window information from backend
- * @returns {string} Formatted window description
+ * Format window period for display
+ * @param {Object} windowInfo - Window information object
+ * @returns {string} Formatted window period
  */
 export function formatWindowPeriod(windowInfo) {
-  if (!windowInfo) return 'Unknown'
+  if (!windowInfo) return 'Auto'
 
   try {
-    const { window_period, window_seconds, estimated_points, auto_calculated } = windowInfo
-
-    if (auto_calculated) {
-      return `Auto: ${formatSeconds(window_seconds)} (${estimated_points} pts)`
-    } else {
-      return `${window_period} (${estimated_points} pts)`
+    if (windowInfo.window_period) {
+      return windowInfo.window_period
     }
 
+    if (windowInfo.window_seconds) {
+      const seconds = windowInfo.window_seconds
+      if (seconds >= 3600) {
+        return `${(seconds / 3600).toFixed(1)}h`
+      } else if (seconds >= 60) {
+        return `${(seconds / 60).toFixed(1)}m`
+      } else {
+        return `${seconds.toFixed(1)}s`
+      }
+    }
+
+    return 'Auto'
   } catch (error) {
     console.warn('⚠️ Window period formatting error:', error)
     return 'Error'
   }
-}
-
-/**
- * Format seconds to human readable string
- * @param {number} seconds - Number of seconds
- * @returns {string} Formatted duration string
- */
-export function formatSeconds(seconds) {
-  if (!seconds || seconds < 0) return '0s'
-
-  const units = [
-    { label: 'd', value: 86400 },
-    { label: 'h', value: 3600 },
-    { label: 'm', value: 60 },
-    { label: 's', value: 1 }
-  ]
-
-  for (const unit of units) {
-    if (seconds >= unit.value) {
-      const value = Math.floor(seconds / unit.value)
-      return `${value}${unit.label}`
-    }
-  }
-
-  return `${seconds}s`
 }
 
 // ==================== VALIDATION UTILITIES ====================
@@ -508,54 +461,44 @@ export function validateChartData(chartData) {
     } else {
       // Validate each dataset
       chartData.datasets.forEach((dataset, index) => {
-        if (!dataset.label) {
-          issues.push(`Dataset ${index}: Missing label`)
-        }
-
         if (!Array.isArray(dataset.data)) {
           issues.push(`Dataset ${index}: Data must be an array`)
-        } else if (dataset.data.length !== chartData.labels.length) {
+        } else if (dataset.data.length === 0) {
+          issues.push(`Dataset ${index}: No data points`)
+        } else if (chartData.labels.length > 0 && dataset.data.length !== chartData.labels.length) {
           issues.push(`Dataset ${index}: Data length (${dataset.data.length}) doesn't match labels length (${chartData.labels.length})`)
-        }
-
-        if (!dataset.borderColor) {
-          issues.push(`Dataset ${index}: Missing border color`)
         }
       })
     }
 
-    return {
-      valid: issues.length === 0,
-      issues: issues,
-      datasetCount: chartData.datasets?.length || 0,
-      pointCount: chartData.labels?.length || 0
-    }
+    return { valid: issues.length === 0, issues }
 
   } catch (error) {
-    return {
-      valid: false,
-      issues: [`Validation error: ${error.message}`]
-    }
+    console.error('❌ Chart data validation error:', error)
+    return { valid: false, issues: [`Validation error: ${error.message}`] }
   }
 }
 
-// ==================== MOCK DATA GENERATORS ====================
+// ==================== MOCK DATA GENERATION ====================
 
 /**
  * Generate mock chart data for testing
- * @param {Object} options - Generation options
+ * @param {Object} options - Mock data options
  * @returns {Object} Mock Chart.js data
  */
 export function generateMockChartData(options = {}) {
   const {
+    pointCount = 50,
     signalCount = 2,
-    pointCount = 100,
-    timeRange = { start: new Date(Date.now() - 3600000), end: new Date() },
-    signalNames = ['Temperature', 'Humidity', 'Pressure', 'Voltage'],
-    units = ['°C', '%', 'Pa', 'V']
+    signalNames = ['Temperature', 'Humidity'],
+    units = ['°C', '%'],
+    timeRange = {
+      start: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+      end: new Date().toISOString()
+    }
   } = options
 
-  // Generate timestamps
+  // Generate time series labels
   const startTime = new Date(timeRange.start)
   const endTime = new Date(timeRange.end)
   const timeStep = (endTime - startTime) / (pointCount - 1)
@@ -567,17 +510,18 @@ export function generateMockChartData(options = {}) {
   // Generate datasets
   const datasets = Array.from({ length: signalCount }, (_, i) => ({
     label: signalNames[i] || `Signal ${i + 1}`,
-    data: Array.from({ length: pointCount }, () =>
-      Math.random() * 100 + 50 + Math.sin(Date.now() / 10000) * 20
-    ),
+    data: labels.map((label, j) => ({
+      x: label,
+      y: Math.random() * 100 + 50 + Math.sin(j / 10) * 20
+    })),
     borderColor: getSignalColor(i),
-    backgroundColor: `${getSignalColor(i)}20`,
+    backgroundColor: getSignalColor(i, 0.1),
     borderWidth: 2,
     fill: false,
     tension: 0.1,
     pointRadius: 3,
     unit: units[i] || '',
-    ...applyLineStyle(i)
+    ...getLineStyle(null, i)
   }))
 
   return {
@@ -586,10 +530,7 @@ export function generateMockChartData(options = {}) {
     isEmpty: false,
     metadata: {
       totalPoints: pointCount,
-      timeRange: {
-        start: startTime.toISOString(),
-        end: endTime.toISOString()
-      },
+      timeRange: timeRange,
       mock: true
     }
   }
@@ -600,21 +541,14 @@ export function generateMockChartData(options = {}) {
 export default {
   // Core transformation
   transformWidgetDataToChart,
-  transformTimestamps,
-  transformDatasets,
-  transformDataPoints,
 
   // Styling utilities
   getSignalColor,
-  applyLineStyle,
   formatSignalLabel,
-  generateDatasetColors,
 
   // Formatting utilities
-  formatTooltipValue,
   formatNumericValue,
   formatWindowPeriod,
-  formatSeconds,
 
   // Validation
   validateChartData,
@@ -624,6 +558,5 @@ export default {
 
   // Constants
   CHART_COLORS,
-  LINE_STYLES,
-  POINT_STYLES
+  LINE_STYLES
 }

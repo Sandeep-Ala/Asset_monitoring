@@ -31,7 +31,7 @@ import os
 from typing import Dict, List
 
 # Configurable points per widget (for testing different values)
-MAX_POINTS_PER_WIDGET = int(os.getenv('MAX_POINTS_PER_WIDGET', '100'))
+MAX_POINTS_PER_WIDGET = int(os.getenv('MAX_POINTS_PER_WIDGET', '99'))
 DEFAULT_WINDOW_PERIOD = os.getenv('DEFAULT_WINDOW_PERIOD', 'auto')
 
 # Window period options and their seconds
