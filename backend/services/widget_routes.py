@@ -397,7 +397,7 @@ class WidgetDataRoutes:
     db: Session = Depends(get_db)
     widget_router.tags = ["Widget Data"]
 
-    @widget_router.post("/widgets/{widget_id}/data")
+    @widget_router.post("/{widget_id}/data")
     def get_widget_data(self, widget_id: str, time_request: WidgetDataRequest, connection_id: Optional[str] = None):
         """Get data for a specific widget with window period support"""
         from services.data_retrieval_service import DataRetrievalService

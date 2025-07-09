@@ -7,6 +7,7 @@ import DynamicPage from 'pages/DynamicPage.vue'
 import DataSourcePage from 'pages/DataSourcePage.vue'
 import MetadataMappingPage from 'pages/MetadataMappingPage.vue'
 import TestPage from 'pages/TestPage.vue'
+import TestWidget from 'pages/TestWidgetDataPage.vue'
 const routes = [
   {
     path: '/',
@@ -45,6 +46,14 @@ const routes = [
         component: TestPage,
         meta: {
           title: 'Testing Phase 6.3',
+          icon: 'bug_report'
+        }
+      },
+      {
+        path: '/test-widget-data',
+        component: TestWidget,
+        meta: {
+          title: 'Testing Phase 6.3.4',
           icon: 'bug_report'
         }
       },
