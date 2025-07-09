@@ -403,10 +403,9 @@ class WidgetDataRoutes:
         from services.data_retrieval_service import DataRetrievalService
         from services.query_generation_service import QueryGenerationService
         
-        # Validate time range
         time_range = {
-            "start": "2025-03-07T04:52:00.000Z",
-            "end": "2025-03-08T05:52:00.000Z",
+            "start": time_request.time_start,
+            "end": time_request.time_end,
             "range_type": time_request.time_range_type
         }
         
@@ -415,7 +414,7 @@ class WidgetDataRoutes:
             raise HTTPException(status_code=400, detail=f"Invalid time range: {error}")
         
         # Get widget data with window period
-        success, data, error_msg = DataRetrievalService.get_widget_data_with_window(
+        success, data, error_msg = DataRetrievalService.get_widget_data_with_window_period(
             self.db, widget_id, time_range, 'auto', connection_id
         )
         

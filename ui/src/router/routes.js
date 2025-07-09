@@ -8,6 +8,7 @@ import DataSourcePage from 'pages/DataSourcePage.vue'
 import MetadataMappingPage from 'pages/MetadataMappingPage.vue'
 import TestPage from 'pages/TestPage.vue'
 import TestWidget from 'pages/TestWidgetDataPage.vue'
+import zoomtest from 'pages/ZoomableChartTestPage.vue'
 const routes = [
   {
     path: '/',
@@ -54,6 +55,14 @@ const routes = [
         component: TestWidget,
         meta: {
           title: 'Testing Phase 6.3.4',
+          icon: 'bug_report'
+        }
+      },
+        {
+        path: '/test-zoomable-chart',
+        component: zoomtest,
+        meta: {
+          title: 'Testing Phase 6.3.4-D',
           icon: 'bug_report'
         }
       },

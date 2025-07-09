@@ -1,179 +1,260 @@
-<!-- src/components/ZoomableLineChart.vue -->
-<!-- Advanced Chart.js Component with Zoom/Pan and Real Data Integration -->
-<!-- Phase 6.3.4 - Complete Widget Visualization System -->
+.data-controls {
+  display: flex;
+  gap: 8px;
+}<!--
+  File: src/components/ZoomableLineChart.vue
+  Purpose: Professional time-series chart with zoom/pan capabilities
+  Status: Part 1 + Part 2 - Basic Structure + Real Data Integration
+  Dependencies: Chart.js, chartjs-plugin-zoom, useWidgetData, useGlobalTime
+-->
 
 <template>
-  <div class="zoomable-chart-container" :style="containerStyle">
-    <!-- Chart Header -->
-    <div class="chart-header" v-if="showHeader">
-      <div class="chart-title">
-        <h6 class="q-ma-none">{{ chartTitle }}</h6>
-        <div class="chart-subtitle text-caption text-grey-7">
-          {{ chartSubtitle }}
+  <div class="zoomable-line-chart">
+    <!-- Chart Container -->
+    <div
+      ref="chartContainer"
+      class="chart-container"
+      :style="{ height: chartHeight }"
+    >
+      <!-- Loading State -->
+      <div v-if="isLoading" class="chart-loading">
+        <q-spinner-dots
+          color="primary"
+          size="50px"
+        />
+        <div class="loading-text">
+          {{ isInitialLoad ? 'Loading chart data...' : 'Refreshing...' }}
+        </div>
+        <div v-if="!isInitialLoad" class="loading-subtext">
+          {{ `Fetching ${totalDataPoints} data points` }}
         </div>
       </div>
 
-      <!-- Chart Controls -->
-      <div class="chart-controls">
-        <q-btn
-          flat
-          dense
-          round
-          icon="zoom_out_map"
-          @click="resetZoom"
-          :disable="isLoading"
-          size="sm"
-          color="grey-7"
-        >
-          <q-tooltip>Reset Zoom</q-tooltip>
-        </q-btn>
-
-        <q-btn
-          flat
-          dense
-          round
-          :icon="isAutoRefresh ? 'pause' : 'play_arrow'"
-          @click="toggleAutoRefresh"
-          :disable="isLoading"
-          size="sm"
-          :color="isAutoRefresh ? 'green' : 'grey-7'"
-        >
-          <q-tooltip>{{ isAutoRefresh ? 'Pause' : 'Start' }} Auto Refresh</q-tooltip>
-        </q-btn>
-
-        <q-btn
-          flat
-          dense
-          round
-          icon="refresh"
-          @click="refreshData"
-          :loading="isLoading"
-          size="sm"
-          color="primary"
-        >
-          <q-tooltip>Refresh Data</q-tooltip>
-        </q-btn>
-      </div>
-    </div>
-
-    <!-- Chart Container -->
-    <div class="chart-wrapper" :class="{ 'with-header': showHeader }">
-      <!-- Loading State -->
-      <div v-if="isLoading && !hasData" class="chart-loading">
-        <q-spinner-dots size="40px" color="primary" />
-        <div class="text-body2 q-mt-sm">Loading chart data...</div>
-      </div>
-
       <!-- Error State -->
-      <div v-else-if="hasError && !hasData" class="chart-error">
-        <q-icon name="error_outline" size="48px" color="negative" />
-        <div class="text-h6 q-mt-sm">Unable to load data</div>
-        <div class="text-body2 text-grey-7 q-mt-xs">{{ errorMessage }}</div>
+      <div v-else-if="error" class="chart-error">
+        <q-icon name="warning" color="negative" size="48px" />
+        <div class="error-text">{{ error }}</div>
+        <div class="error-details">
+          <small>Widget ID: {{ widgetId }}</small>
+          <small v-if="errorCount > 0">Retry attempts: {{ errorCount }}</small>
+        </div>
         <q-btn
-          flat
-          label="Retry"
-          @click="refreshData"
+          outline
           color="primary"
+          icon="refresh"
+          label="Retry"
+          @click="retryLoad"
           class="q-mt-md"
         />
       </div>
 
-      <!-- Empty State -->
-      <div v-else-if="!hasData && !isLoading" class="chart-empty">
-        <q-icon name="timeline" size="48px" color="grey-4" />
-        <div class="text-h6 q-mt-sm text-grey-6">No data available</div>
-        <div class="text-body2 text-grey-7 q-mt-xs">
-          {{ emptyMessage || 'No data found for the selected time range' }}
+      <!-- No Data State -->
+      <div v-else-if="isEmpty" class="chart-empty">
+        <q-icon name="bar_chart" color="grey-5" size="48px" />
+        <div class="empty-text">No data available</div>
+        <div class="empty-subtext">
+          Try adjusting the time range or check your data source
         </div>
       </div>
 
       <!-- Chart Canvas -->
-      <div v-else class="chart-canvas-container">
-        <canvas
-          ref="chartCanvas"
-          class="chart-canvas"
-          :style="canvasStyle"
-        ></canvas>
+      <canvas
+        v-else
+        ref="chartCanvas"
+        :id="`chart-${widgetId}`"
+        class="chart-canvas"
+      ></canvas>
 
-        <!-- Data Info Overlay -->
-        <div v-if="showDataInfo" class="data-info-overlay">
-          <q-chip
-            size="sm"
-            :color="dataPointCount > maxRecommendedPoints ? 'orange' : 'blue'"
-            text-color="white"
-            icon="scatter_plot"
-          >
-            {{ dataPointCount }} points
-          </q-chip>
-
-          <q-chip
-            v-if="windowInfo"
-            size="sm"
-            color="grey"
-            text-color="white"
-            icon="tune"
-            class="q-ml-xs"
-          >
-            {{ formatWindowPeriod(windowInfo) }}
-          </q-chip>
-        </div>
+      <!-- Background Refresh Indicator -->
+      <div v-if="isBackgroundRefresh" class="refresh-indicator">
+        <q-spinner size="20px" color="primary" />
+        <span class="q-ml-sm">Updating...</span>
       </div>
     </div>
 
-    <!-- Chart Footer/Legend -->
-    <div v-if="showLegend && hasData" class="chart-legend">
-      <div class="legend-items">
+    <!-- Chart Controls -->
+    <div v-if="!isLoading && !error && !isEmpty" class="chart-controls">
+      <!-- Left Controls: Zoom -->
+      <div class="zoom-controls">
+        <q-btn-group outline>
+          <q-btn
+            icon="zoom_out_map"
+            size="sm"
+            @click="resetZoom"
+            :disable="!chartInstance"
+          >
+            <q-tooltip>Reset Zoom</q-tooltip>
+          </q-btn>
+          <q-btn
+            icon="zoom_in"
+            size="sm"
+            @click="zoomIn"
+            :disable="!chartInstance"
+          >
+            <q-tooltip>Zoom In</q-tooltip>
+          </q-btn>
+          <q-btn
+            icon="zoom_out"
+            size="sm"
+            @click="zoomOut"
+            :disable="!chartInstance"
+          >
+            <q-tooltip>Zoom Out</q-tooltip>
+          </q-btn>
+        </q-btn-group>
+
+      <!-- Data Controls -->
+      <div class="data-controls">
+        <q-btn-group outline class="q-ml-sm">
+          <q-btn
+            icon="refresh"
+            size="sm"
+            @click="refreshData"
+            :loading="isRefreshing"
+            :disable="isLoading"
+          >
+            <q-tooltip>Manual Refresh</q-tooltip>
+          </q-btn>
+
+          <!-- Auto Refresh Interval Selector -->
+          <q-btn-dropdown
+            :icon="isAutoRefreshActive ? 'pause' : 'play_arrow'"
+            size="sm"
+            :color="isAutoRefreshActive ? 'negative' : 'positive'"
+            :label="autoRefreshLabel"
+            dropdown-icon="expand_more"
+          >
+            <q-list>
+              <q-item-label header>Auto Refresh Interval</q-item-label>
+
+              <q-item
+                clickable
+                @click="setAutoRefresh(0)"
+                :active="!isAutoRefreshActive"
+              >
+                <q-item-section>
+                  <q-item-label>Manual Only</q-item-label>
+                  <q-item-label caption>Disable auto refresh</q-item-label>
+                </q-item-section>
+              </q-item>
+
+              <q-separator />
+
+              <q-item
+                clickable
+                @click="setAutoRefresh(2)"
+                :active="isAutoRefreshActive && refreshInterval === 2"
+              >
+                <q-item-section>
+                  <q-item-label>2 seconds</q-item-label>
+                  <q-item-label caption>Very fast refresh</q-item-label>
+                </q-item-section>
+              </q-item>
+
+              <q-item
+                clickable
+                @click="setAutoRefresh(5)"
+                :active="isAutoRefreshActive && refreshInterval === 5"
+              >
+                <q-item-section>
+                  <q-item-label>5 seconds</q-item-label>
+                  <q-item-label caption>Fast refresh</q-item-label>
+                </q-item-section>
+              </q-item>
+
+              <q-item
+                clickable
+                @click="setAutoRefresh(30)"
+                :active="isAutoRefreshActive && refreshInterval === 30"
+              >
+                <q-item-section>
+                  <q-item-label>30 seconds</q-item-label>
+                  <q-item-label caption>Normal refresh</q-item-label>
+                </q-item-section>
+              </q-item>
+
+              <q-item
+                clickable
+                @click="setAutoRefresh(300)"
+                :active="isAutoRefreshActive && refreshInterval === 300"
+              >
+                <q-item-section>
+                  <q-item-label>5 minutes</q-item-label>
+                  <q-item-label caption>Slow refresh</q-item-label>
+                </q-item-section>
+              </q-item>
+
+              <q-item
+                clickable
+                @click="setAutoRefresh(600)"
+                :active="isAutoRefreshActive && refreshInterval === 600"
+              >
+                <q-item-section>
+                  <q-item-label>10 minutes</q-item-label>
+                  <q-item-label caption>Very slow refresh</q-item-label>
+                </q-item-section>
+              </q-item>
+            </q-list>
+          </q-btn-dropdown>
+        </q-btn-group>
+      </div>
+      </div>
+
+      <!-- Right Controls: Legend -->
+      <div class="legend-controls">
         <div
-          v-for="(dataset, index) in legendItems"
+          v-for="(dataset, index) in chartData?.datasets || []"
           :key="index"
           class="legend-item"
-          :class="{ 'legend-hidden': dataset.hidden }"
           @click="toggleDataset(index)"
         >
           <div
             class="legend-color"
             :style="{ backgroundColor: dataset.borderColor }"
           ></div>
-          <span class="legend-label">{{ dataset.label }}</span>
-          <span v-if="dataset.unit" class="legend-unit">({{ dataset.unit }})</span>
+          <span
+            class="legend-label"
+            :class="{ 'legend-hidden': dataset.hidden }"
+          >
+            {{ dataset.label }}
+          </span>
         </div>
       </div>
     </div>
 
-    <!-- Loading Overlay for Refresh -->
-    <div v-if="isLoading && hasData" class="refresh-overlay">
-      <q-spinner size="24px" color="primary" />
+    <!-- Chart Status Info -->
+    <div v-if="showDebugInfo && hasData" class="chart-debug">
+      <div class="debug-info">
+        <small>
+          Widget: {{ widgetId }} |
+          Data Points: {{ totalDataPoints }} |
+          Last Update: {{ lastUpdateTime }} |
+          Cache: {{ performanceMetrics.cacheHit ? 'HIT' : 'MISS' }} |
+          Time Range: {{ formatTimeRange }}
+        </small>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
-import { useQuasar } from 'quasar'
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { Chart, registerables } from 'chart.js'
-import 'chartjs-adapter-date-fns'
 import zoomPlugin from 'chartjs-plugin-zoom'
+import 'chartjs-adapter-date-fns'
 
-// Services and Utils
-import { api } from 'boot/axios'
+// Real Data Integration Imports
+import { useWidgetData } from 'src/composables/useWidgetData.js'
 import { useGlobalTime } from 'src/composables/useGlobalTime.js'
-import {
-  transformWidgetDataToChart,
-  createLineChartConfig,
-  defaultChartOptions,
-  formatWindowPeriod,
-  optimizeChartForLargeData
-} from 'src/utils/chartUtils.js'
+import { transformWidgetDataToChart } from 'src/utils/dataFormatter.js'
+import { createLineChartConfig, optimizeChartForLargeData } from 'src/utils/chartUtils.js'
 
-// Register Chart.js components
-Chart.register(...registerables, zoomPlugin)
-
-// ==================== PROPS ====================
+// ==================== COMPONENT PROPS ====================
 
 const props = defineProps({
   // Widget Configuration
   widgetId: {
-    type: String,
+    type: [String, Number],
     required: true
   },
   widgetConfig: {
@@ -181,156 +262,184 @@ const props = defineProps({
     default: () => ({})
   },
 
+  // Custom Time Range (optional override)
+  customTimeRange: {
+    type: Object,
+    default: null
+  },
+
   // Chart Appearance
-  height: {
-    type: [Number, String],
-    default: 300
+  chartHeight: {
+    type: String,
+    default: '300px'
   },
-  showHeader: {
+
+  // Features
+  enableZoom: {
     type: Boolean,
     default: true
   },
-  showLegend: {
+  enablePan: {
     type: Boolean,
     default: true
   },
-  showDataInfo: {
+  enableLegend: {
+    type: Boolean,
+    default: true
+  },
+  enableAutoRefresh: {
     type: Boolean,
     default: true
   },
 
-  // Data Configuration
-  autoRefresh: {
+  // Debug
+  showDebugInfo: {
     type: Boolean,
-    default: true
-  },
-  refreshInterval: {
-    type: Number,
-    default: 30000 // 30 seconds
-  },
-  maxRecommendedPoints: {
-    type: Number,
-    default: 500
+    default: false
   }
 })
 
-// ==================== EMITS ====================
+// ==================== COMPONENT EMITS ====================
 
 const emit = defineEmits([
-  'data-loaded',
-  'data-error',
+  'chart-ready',
+  'chart-error',
+  'data-updated',
   'zoom-changed',
-  'chart-ready'
+  'pan-changed'
 ])
-
-// ==================== SETUP ====================
-
-const $q = useQuasar()
-const globalTime = useGlobalTime()
 
 // ==================== REFS ====================
 
+// Chart instances
+const chartContainer = ref(null)
 const chartCanvas = ref(null)
 const chartInstance = ref(null)
 
-// ==================== STATE ====================
+// ==================== REAL DATA INTEGRATION ====================
 
-// Loading and Error States
-const isLoading = ref(false)
-const hasError = ref(false)
-const errorMessage = ref('')
-const hasData = ref(false)
+// Initialize widget data composable with real API integration
+const {
+  rawData,
+  chartData,
+  metadata,
 
-// Chart Data
-const chartData = reactive({
-  datasets: [],
-  metadata: null
-})
+  // Loading states
+  isLoading,
+  isInitialLoad,
+  isBackgroundRefresh,
+  isRetrying,
 
-// Auto Refresh
-const isAutoRefresh = ref(props.autoRefresh)
+  // Error handling
+  error,
+  errorCount,
+  lastErrorTime,
+
+  // Data status
+  hasData,
+  isEmpty,
+  lastFetchTime,
+  dataAge,
+  dataStatus,
+
+  // Computed properties
+  currentTimeRange,
+  isDataStale,
+  needsBackgroundRefresh,
+  performanceMetrics,
+
+  // Actions
+  initialize: initializeWidgetData,
+  refresh: refreshData,
+  retryFetch,
+  clearCache,
+  startAutoRefresh,
+  stopAutoRefresh,
+  cleanup: cleanupWidgetData
+} = useWidgetData(
+  props.widgetId,  // Fixed: Pass the actual widget ID, not a function
+  props.widgetConfig,  // Fixed: Pass the actual config, not a function
+  {
+    enableCaching: true,
+    enableAutoRefresh: props.enableAutoRefresh
+  },
+  props.customTimeRange  // Fixed: Pass the actual time range, not a function
+)
+
+// Global time management
+const globalTime = useGlobalTime()
+
+// ==================== REACTIVE STATE ====================
+
+// Auto-refresh management
+const refreshInterval = ref(30) // Default 30 seconds
 const refreshTimer = ref(null)
 
-// Data Info
-const dataPointCount = ref(0)
-const windowInfo = ref(null)
-const emptyMessage = ref('')
+// ==================== COMPUTED PROPERTIES ====================
 
-// ==================== COMPUTED ====================
-
-const chartTitle = computed(() => {
-  return props.widgetConfig?.widget_label || 'Chart Widget'
+const totalDataPoints = computed(() => {
+  if (!chartData.value?.datasets) return 0
+  return chartData.value.datasets.reduce((total, dataset) => {
+    return total + (dataset.data?.length || 0)
+  }, 0)
 })
 
-const chartSubtitle = computed(() => {
-  const equipmentCount = props.widgetConfig?.equipment_ids?.length || 0
-  const signalCount = props.widgetConfig?.signal_ids?.length || 0
-  return `${equipmentCount} Equipment • ${signalCount} Signals`
+const lastUpdateTime = computed(() => {
+  if (!lastFetchTime.value) return 'Never'
+  return new Date(lastFetchTime.value).toLocaleTimeString()
 })
 
-const containerStyle = computed(() => ({
-  height: typeof props.height === 'number' ? `${props.height}px` : props.height,
-  minHeight: '200px'
-}))
-
-const canvasStyle = computed(() => ({
-  maxHeight: '100%',
-  maxWidth: '100%'
-}))
-
-const legendItems = computed(() => {
-  return chartData.datasets || []
+const formatTimeRange = computed(() => {
+  if (!currentTimeRange.value) return 'None'
+  const start = new Date(currentTimeRange.value.start).toLocaleTimeString()
+  const end = new Date(currentTimeRange.value.end).toLocaleTimeString()
+  return `${start} - ${end}`
 })
 
-// ==================== WATCHERS ====================
-
-// Watch for global time changes
-watch(
-  () => globalTime.timeState.lastUpdated,
-  () => {
-    if (hasData.value) {
-      console.log('🕒 Global time changed, refreshing chart data')
-      refreshData()
-    }
-  }
-)
-
-// Watch for widget config changes
-watch(
-  () => props.widgetConfig,
-  (newConfig, oldConfig) => {
-    if (JSON.stringify(newConfig) !== JSON.stringify(oldConfig)) {
-      console.log('⚙️ Widget config changed, refreshing chart')
-      refreshData()
-    }
-  },
-  { deep: true }
-)
-
-// Watch for auto refresh changes
-watch(isAutoRefresh, (enabled) => {
-  if (enabled) {
-    startAutoRefresh()
-  } else {
-    stopAutoRefresh()
-  }
+const isAutoRefreshActive = computed(() => {
+  return refreshTimer.value !== null
 })
 
-// ==================== LIFECYCLE ====================
+const isRefreshing = computed(() => {
+  return isBackgroundRefresh.value || isRetrying.value
+})
+
+const autoRefreshLabel = computed(() => {
+  if (!isAutoRefreshActive.value) return 'Manual'
+  if (refreshInterval.value < 60) return `${refreshInterval.value}s`
+  return `${Math.floor(refreshInterval.value / 60)}m`
+})
+
+// ==================== CHART.JS SETUP ====================
+
+// Register Chart.js components
+Chart.register(...registerables, zoomPlugin)
+
+// ==================== LIFECYCLE HOOKS ====================
 
 onMounted(async () => {
-  console.log('📊 ZoomableLineChart mounted for widget:', props.widgetId)
+  console.log('🚀 ZoomableLineChart mounting for widget:', props.widgetId)
 
-  await nextTick()
-  await initializeChart()
-  await loadData()
+  try {
+    await nextTick()
 
-  if (isAutoRefresh.value) {
-    startAutoRefresh()
+    // Initialize widget data management
+    await initializeWidgetData()
+
+    // Initialize chart
+    await initializeChart()
+
+    // Start auto-refresh if enabled
+    if (props.enableAutoRefresh) {
+      startAutoRefresh()
+    }
+
+    emit('chart-ready', chartInstance.value)
+
+  } catch (err) {
+    console.error('❌ Error mounting chart:', err)
+    emit('chart-error', err)
   }
-
-  // Listen for global events
-  window.addEventListener('globalTimeChanged', handleGlobalTimeChange)
 })
 
 onBeforeUnmount(() => {
@@ -339,26 +448,129 @@ onBeforeUnmount(() => {
   // Cleanup chart
   destroyChart()
 
-  // Cleanup timers
-  stopAutoRefresh()
+  // Cleanup widget data
+  cleanupWidgetData()
 
-  // Remove event listeners
-  window.removeEventListener('globalTimeChanged', handleGlobalTimeChange)
+  // Stop auto-refresh
+  stopAutoRefresh()
+  stopCustomAutoRefresh()
+
+  // Remove global event listeners
+  removeEventListeners()
 })
 
-// ==================== CHART INITIALIZATION ====================
+// ==================== WATCHERS ====================
+
+// Watch for chart data changes and update chart
+watch(chartData, async (newData) => {
+  if (newData && chartInstance.value) {
+    console.log('📊 Chart data changed, updating chart...', {
+      datasets: newData.datasets?.length || 0,
+      totalPoints: newData.datasets?.reduce((total, dataset) => total + (dataset.data?.length || 0), 0) || 0
+    })
+
+    // CRITICAL FIX: Sort data before updating chart (frontend backup)
+    const sortedData = sortChartDataByTime(newData)
+
+    await updateChartData(sortedData)
+    emit('data-updated', sortedData)
+  }
+}, { deep: true })
+
+// Watch for global time changes
+watch(currentTimeRange, async (newRange, oldRange) => {
+  if (newRange && hasData.value) {
+    // Only refresh if time range actually changed
+    if (JSON.stringify(newRange) !== JSON.stringify(oldRange)) {
+      console.log('⏰ Time range changed, refreshing chart data...', newRange)
+      await refreshData()
+    }
+  }
+}, { deep: true })
+
+// ==================== DATA SORTING FIX ====================
+
+function sortChartDataByTime(chartData) {
+  if (!chartData || !chartData.labels || !chartData.datasets) {
+    return chartData
+  }
+
+  try {
+    console.log('🔄 Sorting chart data by time (frontend backup)')
+
+    // Create array of {index, time, label} for sorting
+    const labelTimeMap = chartData.labels.map((label, index) => ({
+      index,
+      label,
+      time: parseTimeLabel(label)
+    }))
+
+    // Sort by time
+    labelTimeMap.sort((a, b) => a.time - b.time)
+
+    // Create new sorted labels
+    const sortedLabels = labelTimeMap.map(item => item.label)
+
+    // Sort datasets according to the new order
+    const sortedDatasets = chartData.datasets.map(dataset => ({
+      ...dataset,
+      data: labelTimeMap.map(item => dataset.data[item.index])
+    }))
+
+    console.log('✅ Chart data sorted successfully')
+
+    return {
+      ...chartData,
+      labels: sortedLabels,
+      datasets: sortedDatasets
+    }
+
+  } catch (error) {
+    console.warn('⚠️ Error sorting chart data, using original:', error)
+    return chartData
+  }
+}
+
+function parseTimeLabel(label) {
+  try {
+    // Handle time-only format like "09:00:00"
+    if (typeof label === 'string' && label.includes(':')) {
+      const [hours, minutes, seconds] = label.split(':').map(Number)
+      // Use today's date with the time
+      const today = new Date()
+      today.setHours(hours, minutes, seconds || 0, 0)
+      return today.getTime()
+    }
+
+    // Handle Date objects
+    if (label instanceof Date) {
+      return label.getTime()
+    }
+
+    // Handle ISO strings
+    if (typeof label === 'string') {
+      return new Date(label).getTime()
+    }
+
+    return 0
+  } catch (error) {
+    console.warn('⚠️ Could not parse time label:', label)
+    return 0
+  }
+}
+
+// ==================== CHART METHODS ====================
 
 async function initializeChart() {
   if (!chartCanvas.value) {
-    console.error('❌ Chart canvas not found')
-    return
+    throw new Error('Chart canvas not found')
   }
 
   try {
     // Destroy existing chart
     destroyChart()
 
-    // Create chart configuration
+    // Create initial chart configuration
     const config = createLineChartConfig(props.widgetConfig, { datasets: [] })
 
     // Enhanced configuration for zoom/pan
@@ -375,16 +587,16 @@ async function initializeChart() {
         zoom: {
           zoom: {
             wheel: {
-              enabled: true,
+              enabled: props.enableZoom,
             },
             pinch: {
-              enabled: true
+              enabled: props.enableZoom
             },
             mode: 'x',
             onZoomComplete: handleZoomComplete
           },
           pan: {
-            enabled: true,
+            enabled: props.enablePan,
             mode: 'x',
             onPanComplete: handlePanComplete
           }
@@ -407,9 +619,8 @@ async function initializeChart() {
             label: function(context) {
               const label = context.dataset.label || ''
               const value = typeof context.parsed.y === 'number' ?
-                context.parsed.y.toFixed(4) : context.parsed.y
-              const unit = context.dataset.unit || ''
-              return `${label}: ${value} ${unit}`.trim()
+                context.parsed.y.toFixed(2) : context.parsed.y
+              return `${label}: ${value}`
             }
           }
         }
@@ -417,18 +628,12 @@ async function initializeChart() {
       scales: {
         x: {
           type: 'time',
-          display: true,
-          title: {
-            display: true,
-            text: 'Time'
-          },
           time: {
-            tooltipFormat: 'MMM dd, yyyy HH:mm:ss',
             displayFormats: {
               millisecond: 'HH:mm:ss.SSS',
               second: 'HH:mm:ss',
               minute: 'HH:mm',
-              hour: 'MMM dd, HH:mm',
+              hour: 'HH:mm',
               day: 'MMM dd',
               week: 'MMM dd',
               month: 'MMM yyyy',
@@ -436,20 +641,16 @@ async function initializeChart() {
               year: 'yyyy'
             }
           },
-          grid: {
+          title: {
             display: true,
-            color: 'rgba(0, 0, 0, 0.1)'
+            text: 'Time'
           }
         },
         y: {
-          display: true,
+          beginAtZero: false,
           title: {
             display: true,
-            text: 'Value'
-          },
-          grid: {
-            display: true,
-            color: 'rgba(0, 0, 0, 0.1)'
+            text: props.widgetConfig?.y_axis_label || 'Value'
           }
         }
       }
@@ -458,381 +659,389 @@ async function initializeChart() {
     // Create chart instance
     chartInstance.value = new Chart(chartCanvas.value, config)
 
-    console.log('✅ Chart initialized successfully')
-    emit('chart-ready', chartInstance.value)
+    // Add event listeners
+    addEventListeners()
 
-  } catch (error) {
-    console.error('❌ Failed to initialize chart:', error)
-    hasError.value = true
-    errorMessage.value = 'Failed to initialize chart'
+    console.log('📊 Chart initialized successfully')
+
+  } catch (err) {
+    console.error('❌ Chart initialization error:', err)
+    throw err
   }
 }
 
-// ==================== DATA LOADING ====================
-
-async function loadData() {
-  if (!props.widgetId) {
-    console.warn('⚠️ No widget ID provided')
-    return
-  }
+async function updateChartData(newData) {
+  if (!chartInstance.value || !newData) return
 
   try {
-    isLoading.value = true
-    hasError.value = false
-    errorMessage.value = ''
-
-    console.log('📥 Loading data for widget:', props.widgetId)
-
-    // Get current time range from global time state
-    const timeRange = {
-      start: globalTime.timeState.timeStart,
-      end: globalTime.timeState.timeEnd,
-      range_type: globalTime.timeState.rangeType || 'custom'
-    }
-
-    if (!timeRange.start || !timeRange.end) {
-      throw new Error('No time range available')
-    }
-
-    // Make API call to get widget data
-    const response = await api.post(`/widgets/${props.widgetId}/data`, {
-      time_start: timeRange.start,
-      time_end: timeRange.end,
-      time_range_type: timeRange.range_type
+    console.log('🔄 Updating chart with new data:', {
+      datasets: newData.datasets?.length || 0,
+      totalPoints: newData.datasets?.reduce((total, dataset) => total + (dataset.data?.length || 0), 0) || 0,
+      isEmpty: newData.isEmpty
     })
 
-    const rawData = response.data
-    console.log('📊 Raw data received:', rawData)
-
-    // Check if data is empty
-    if (rawData.isEmpty) {
-      hasData.value = false
-      emptyMessage.value = rawData.message || 'No data available for the selected time range'
-      updateChart({ datasets: [] })
+    // Handle empty data
+    if (newData.isEmpty) {
+      chartInstance.value.data = { labels: [], datasets: [] }
+      chartInstance.value.update('none')
       return
     }
 
-    // Transform data for Chart.js
-    const transformedData = transformWidgetDataToChart(rawData, props.widgetConfig)
+    // Optimize chart for large datasets
+    const dataPointCount = newData.datasets?.reduce((total, dataset) =>
+      total + (dataset.data?.length || 0), 0) || 0
 
-    if (transformedData.isEmpty) {
-      hasData.value = false
-      emptyMessage.value = transformedData.message || 'Unable to process chart data'
-      return
+    if (dataPointCount > 1000) {
+      optimizeChartForLargeData(chartInstance.value.config, dataPointCount)
     }
 
-    // Update chart data
-    updateChart(transformedData)
-
-    // Update metadata
-    windowInfo.value = rawData.window_info
-    dataPointCount.value = rawData.totalPoints || 0
-
-    hasData.value = true
-    emit('data-loaded', transformedData)
-
-    console.log('✅ Data loaded successfully:', {
-      datasets: transformedData.datasets.length,
-      points: dataPointCount.value
-    })
-
-  } catch (error) {
-    console.error('❌ Failed to load chart data:', error)
-
-    hasError.value = true
-    hasData.value = false
-
-    if (error.response?.status === 404) {
-      errorMessage.value = 'Widget not found'
-    } else if (error.response?.status === 500) {
-      errorMessage.value = 'Server error loading data'
-    } else if (error.message) {
-      errorMessage.value = error.message
-    } else {
-      errorMessage.value = 'Failed to load chart data'
+    // Update chart data - newData is already in Chart.js format from dataFormatter
+    chartInstance.value.data = {
+      labels: newData.labels || [],
+      datasets: newData.datasets || []
     }
 
-    emit('data-error', error)
-  } finally {
-    isLoading.value = false
+    // Update chart configuration if needed
+    updateChartConfiguration(newData)
+
+    // Fast update without animation for better performance
+    chartInstance.value.update('none')
+
+    console.log(`📊 Chart updated successfully with ${dataPointCount} data points`)
+
+  } catch (err) {
+    console.error('❌ Error updating chart data:', err)
   }
 }
 
-function updateChart(newData) {
-  if (!chartInstance.value) return
+function updateChartConfiguration(newData) {
+  if (!chartInstance.value || !newData.metadata) return
 
   try {
-    // Update chart data
-    chartInstance.value.data = newData
-
-    // Store reference for legend
-    chartData.datasets = newData.datasets || []
-    chartData.metadata = newData.metadata
-
-    // Optimize for large datasets
-    if (dataPointCount.value > props.maxRecommendedPoints) {
-      optimizeChartForLargeData(chartInstance.value.config, dataPointCount.value)
+    // Update Y-axis label if available
+    if (newData.metadata.widgetInfo?.y_axis_label) {
+      chartInstance.value.options.scales.y.title.text = newData.metadata.widgetInfo.y_axis_label
     }
 
-    // Update chart
-    chartInstance.value.update('none') // Use 'none' for better performance
-
-    console.log('📊 Chart updated with new data')
-
-  } catch (error) {
-    console.error('❌ Failed to update chart:', error)
-  }
-}
-
-// ==================== CHART INTERACTIONS ====================
-
-function resetZoom() {
-  if (chartInstance.value) {
-    chartInstance.value.resetZoom()
-    emit('zoom-changed', 'reset')
-    console.log('🔍 Chart zoom reset')
-  }
-}
-
-function toggleDataset(datasetIndex) {
-  if (!chartInstance.value) return
-
-  try {
-    const dataset = chartInstance.value.data.datasets[datasetIndex]
-    if (dataset) {
-      // Toggle visibility
-      const meta = chartInstance.value.getDatasetMeta(datasetIndex)
-      meta.hidden = meta.hidden === null ? !dataset.hidden : null
-
-      // Update legend data
-      if (chartData.datasets[datasetIndex]) {
-        chartData.datasets[datasetIndex].hidden = meta.hidden
-      }
-
-      chartInstance.value.update()
-
-      console.log('👁️ Dataset visibility toggled:', dataset.label, meta.hidden ? 'hidden' : 'visible')
+    // Update chart title if available
+    if (newData.metadata.widgetInfo?.widget_label) {
+      chartInstance.value.options.plugins.title.text = newData.metadata.widgetInfo.widget_label
     }
-  } catch (error) {
-    console.error('❌ Failed to toggle dataset:', error)
+
+  } catch (err) {
+    console.warn('⚠️ Error updating chart configuration:', err)
   }
 }
-
-function handleZoomComplete(event) {
-  const chart = event.chart
-  const xScale = chart.scales.x
-
-  emit('zoom-changed', {
-    type: 'zoom',
-    min: xScale.min,
-    max: xScale.max
-  })
-
-  console.log('🔍 Zoom completed:', { min: xScale.min, max: xScale.max })
-}
-
-function handlePanComplete(event) {
-  const chart = event.chart
-  const xScale = chart.scales.x
-
-  emit('zoom-changed', {
-    type: 'pan',
-    min: xScale.min,
-    max: xScale.max
-  })
-
-  console.log('👆 Pan completed:', { min: xScale.min, max: xScale.max })
-}
-
-// ==================== AUTO REFRESH ====================
-
-function startAutoRefresh() {
-  stopAutoRefresh()
-
-  if (props.refreshInterval > 0) {
-    refreshTimer.value = setInterval(() => {
-      if (hasData.value && !isLoading.value) {
-        console.log('🔄 Auto refresh triggered')
-        refreshData()
-      }
-    }, props.refreshInterval)
-
-    console.log('⏰ Auto refresh started:', props.refreshInterval / 1000, 'seconds')
-  }
-}
-
-function stopAutoRefresh() {
-  if (refreshTimer.value) {
-    clearInterval(refreshTimer.value)
-    refreshTimer.value = null
-    console.log('⏹️ Auto refresh stopped')
-  }
-}
-
-function toggleAutoRefresh() {
-  isAutoRefresh.value = !isAutoRefresh.value
-
-  $q.notify({
-    type: 'info',
-    message: `Auto refresh ${isAutoRefresh.value ? 'enabled' : 'disabled'}`,
-    timeout: 2000
-  })
-}
-
-// ==================== EVENT HANDLERS ====================
-
-function refreshData() {
-  console.log('🔄 Manual refresh triggered')
-  loadData()
-}
-
-function handleGlobalTimeChange(event) {
-  console.log('🕒 Global time change detected:', event.detail)
-  if (hasData.value) {
-    refreshData()
-  }
-}
-
-// ==================== CLEANUP ====================
 
 function destroyChart() {
   if (chartInstance.value) {
     try {
       chartInstance.value.destroy()
       chartInstance.value = null
-      console.log('🗑️ Chart instance destroyed')
-    } catch (error) {
-      console.error('❌ Error destroying chart:', error)
+      console.log('📊 Chart instance destroyed')
+    } catch (err) {
+      console.error('❌ Error destroying chart:', err)
     }
   }
 }
 
-// ==================== PUBLIC METHODS ====================
+// ==================== EVENT HANDLERS ====================
+
+function handleZoomComplete(context) {
+  const { chart } = context
+  const { min, max } = chart.scales.x
+
+  console.log('🔍 Zoom completed:', { min, max })
+  emit('zoom-changed', { min, max, type: 'zoom' })
+
+  // Emit global zoom event for chart synchronization
+  window.dispatchEvent(new CustomEvent('chartZoomed', {
+    detail: { chartId: chart.canvas.id, scale: { min, max } }
+  }))
+}
+
+function handlePanComplete(context) {
+  const { chart } = context
+  const { min, max } = chart.scales.x
+
+  console.log('👆 Pan completed:', { min, max })
+  emit('pan-changed', { min, max, type: 'pan' })
+
+  // Emit global pan event for chart synchronization
+  window.dispatchEvent(new CustomEvent('chartPanned', {
+    detail: { chartId: chart.canvas.id, scale: { min, max } }
+  }))
+}
+
+function handleGlobalTimeChange(event) {
+  console.log('⏰ Global time change detected:', event.detail)
+  // Data will be automatically refreshed by the watcher
+}
+
+// ==================== CONTROL METHODS ====================
+
+function resetZoom() {
+  if (chartInstance.value) {
+    chartInstance.value.resetZoom()
+    emit('zoom-changed', { type: 'reset' })
+    console.log('🔍 Zoom reset')
+  }
+}
+
+function zoomIn() {
+  if (chartInstance.value) {
+    chartInstance.value.zoom(1.1)
+    emit('zoom-changed', { type: 'zoom-in' })
+    console.log('🔍 Zoomed in')
+  }
+}
+
+function zoomOut() {
+  if (chartInstance.value) {
+    chartInstance.value.zoom(0.9)
+    emit('zoom-changed', { type: 'zoom-out' })
+    console.log('🔍 Zoomed out')
+  }
+}
+
+function toggleDataset(index) {
+  if (chartInstance.value && chartData.value?.datasets?.[index]) {
+    const dataset = chartData.value.datasets[index]
+    dataset.hidden = !dataset.hidden
+    chartInstance.value.update()
+
+    console.log(`👁️ Dataset "${dataset.label}" ${dataset.hidden ? 'hidden' : 'shown'}`)
+  }
+}
+
+function toggleAutoRefresh() {
+  if (isAutoRefreshActive.value) {
+    stopCustomAutoRefresh()
+    console.log('⏸️ Auto-refresh paused')
+  } else {
+    startCustomAutoRefresh()
+    console.log('▶️ Auto-refresh started')
+  }
+}
+
+function setAutoRefresh(intervalSeconds) {
+  stopCustomAutoRefresh()
+
+  if (intervalSeconds > 0) {
+    refreshInterval.value = intervalSeconds
+    startCustomAutoRefresh()
+    console.log(`⏰ Auto-refresh set to ${intervalSeconds} seconds`)
+  } else {
+    console.log('⏸️ Auto-refresh disabled')
+  }
+}
+
+function startCustomAutoRefresh() {
+  if (refreshTimer.value) return // Already running
+
+  refreshTimer.value = setInterval(async () => {
+    if (!isLoading.value) {
+      console.log(`🔄 Auto-refresh triggered (${refreshInterval.value}s interval)`)
+      await refreshData()
+    }
+  }, refreshInterval.value * 1000)
+}
+
+function stopCustomAutoRefresh() {
+  if (refreshTimer.value) {
+    clearInterval(refreshTimer.value)
+    refreshTimer.value = null
+  }
+}
+
+function retryLoad() {
+  console.log('🔄 Retrying data load...')
+  retryFetch()
+}
+
+// ==================== EVENT LISTENERS ====================
+
+function addEventListeners() {
+  // Listen for global time changes
+  window.addEventListener('globalTimeChanged', handleGlobalTimeChange)
+
+  // Listen for chart synchronization events
+  window.addEventListener('chartZoomed', handleChartSyncZoom)
+  window.addEventListener('chartPanned', handleChartSyncPan)
+}
+
+function removeEventListeners() {
+  window.removeEventListener('globalTimeChanged', handleGlobalTimeChange)
+  window.removeEventListener('chartZoomed', handleChartSyncZoom)
+  window.removeEventListener('chartPanned', handleChartSyncPan)
+}
+
+function handleChartSyncZoom(event) {
+  const { chartId, scale } = event.detail
+  if (chartInstance.value && chartInstance.value.canvas.id !== chartId) {
+    chartInstance.value.zoomScale('x', scale, 'none')
+  }
+}
+
+function handleChartSyncPan(event) {
+  const { chartId, scale } = event.detail
+  if (chartInstance.value && chartInstance.value.canvas.id !== chartId) {
+    chartInstance.value.zoomScale('x', scale, 'none')
+  }
+}
+
+// ==================== EXPOSE PUBLIC METHODS ====================
 
 defineExpose({
-  refreshData,
+  chartInstance,
   resetZoom,
+  zoomIn,
+  zoomOut,
+  retryLoad,
+  toggleDataset,
+  refreshData,
   toggleAutoRefresh,
-  chartInstance: computed(() => chartInstance.value)
+  // Data access
+  rawData,
+  chartData,
+  metadata,
+  hasData,
+  isEmpty,
+  isLoading,
+  error
 })
 </script>
 
 <style scoped>
-.zoomable-chart-container {
+.zoomable-line-chart {
   display: flex;
   flex-direction: column;
-  background: white;
-  border-radius: 8px;
-  overflow: hidden;
-  position: relative;
-}
-
-.chart-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px;
-  border-bottom: 1px solid #e0e0e0;
-  background: #fafafa;
-}
-
-.chart-title h6 {
-  color: #333;
-  font-weight: 500;
-  margin: 0;
-}
-
-.chart-subtitle {
-  color: #757575;
-  font-size: 12px;
-  margin-top: 2px;
-}
-
-.chart-controls {
-  display: flex;
-  gap: 4px;
-}
-
-.chart-wrapper {
-  flex: 1;
-  position: relative;
-  overflow: hidden;
-}
-
-.chart-wrapper.with-header {
-  min-height: calc(100% - 60px);
-}
-
-.chart-canvas-container {
-  position: relative;
   height: 100%;
-  padding: 8px;
+  width: 100%;
+}
+
+.chart-container {
+  position: relative;
+  flex: 1;
+  min-height: 200px;
+  background: white;
+  border-radius: 4px;
+  overflow: hidden;
 }
 
 .chart-canvas {
-  display: block;
-  height: 100% !important;
   width: 100% !important;
+  height: 100% !important;
 }
 
-/* Loading, Error, Empty States */
-.chart-loading,
-.chart-error,
+/* Loading States */
+.chart-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #666;
+}
+
+.loading-text {
+  margin-top: 16px;
+  font-size: 14px;
+}
+
+.loading-subtext {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #999;
+}
+
+/* Error State */
+.chart-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #666;
+  text-align: center;
+}
+
+.error-text {
+  margin: 16px 0 8px;
+  font-size: 14px;
+  max-width: 300px;
+}
+
+.error-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+
+.error-details small {
+  color: #999;
+  font-size: 11px;
+}
+
+/* Empty State */
 .chart-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   height: 100%;
-  min-height: 200px;
+  color: #666;
   text-align: center;
-  padding: 20px;
 }
 
-.chart-error {
-  color: #f44336;
+.empty-text {
+  margin: 16px 0 8px;
+  font-size: 14px;
 }
 
-.chart-empty {
-  color: #757575;
+.empty-subtext {
+  font-size: 12px;
+  color: #999;
+  max-width: 300px;
 }
 
-/* Data Info Overlay */
-.data-info-overlay {
+/* Background Refresh Indicator */
+.refresh-indicator {
   position: absolute;
-  top: 12px;
-  right: 12px;
-  z-index: 10;
-  display: flex;
-  gap: 4px;
-}
-
-/* Refresh Overlay */
-.refresh-overlay {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 20;
+  top: 8px;
+  right: 8px;
   background: rgba(255, 255, 255, 0.9);
-  border-radius: 20px;
-  padding: 8px 12px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #666;
   display: flex;
   align-items: center;
+  backdrop-filter: blur(4px);
+}
+
+/* Controls */
+.chart-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-top: 1px solid #e0e0e0;
+  background: #fafafa;
+  min-height: 48px;
+}
+
+.zoom-controls {
+  display: flex;
   gap: 8px;
 }
 
-/* Legend */
-.chart-legend {
-  border-top: 1px solid #e0e0e0;
-  padding: 8px 16px;
-  background: #fafafa;
-}
-
-.legend-items {
+.legend-controls {
   display: flex;
+  gap: 16px;
   flex-wrap: wrap;
-  gap: 12px;
+  max-width: 60%;
 }
 
 .legend-item {
@@ -842,104 +1051,59 @@ defineExpose({
   cursor: pointer;
   padding: 4px 8px;
   border-radius: 4px;
-  transition: background-color 0.2s ease;
-  font-size: 12px;
+  transition: background-color 0.2s;
 }
 
 .legend-item:hover {
-  background-color: rgba(0, 0, 0, 0.05);
-}
-
-.legend-item.legend-hidden {
-  opacity: 0.5;
-}
-
-.legend-item.legend-hidden .legend-label {
-  text-decoration: line-through;
+  background-color: #f0f0f0;
 }
 
 .legend-color {
   width: 12px;
   height: 12px;
   border-radius: 2px;
-  border: 1px solid rgba(0, 0, 0, 0.1);
+  border: 1px solid #ddd;
 }
 
 .legend-label {
-  font-weight: 500;
+  font-size: 12px;
   color: #333;
+  transition: opacity 0.2s;
 }
 
-.legend-unit {
-  color: #757575;
+.legend-hidden {
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+
+/* Debug Info */
+.chart-debug {
+  padding: 4px 8px;
+  background: #f5f5f5;
+  border-top: 1px solid #e0e0e0;
+  font-family: monospace;
+}
+
+.debug-info {
+  color: #666;
   font-size: 11px;
 }
 
-/* Responsive Design */
-@media (max-width: 768px) {
-  .chart-header {
-    padding: 8px 12px;
-  }
-
-  .chart-title h6 {
-    font-size: 14px;
-  }
-
+/* Responsive */
+@media (max-width: 600px) {
   .chart-controls {
-    gap: 2px;
-  }
-
-  .legend-items {
+    flex-direction: column;
     gap: 8px;
   }
 
-  .legend-item {
-    padding: 2px 6px;
-    font-size: 11px;
+  .legend-controls {
+    max-width: 100%;
+    justify-content: center;
   }
 
-  .data-info-overlay {
-    top: 8px;
-    right: 8px;
-  }
-}
-
-/* Chart Cursor */
-.chart-canvas {
-  cursor: crosshair;
-}
-
-.chart-canvas:active {
-  cursor: grabbing;
-}
-
-/* Animation */
-.zoomable-chart-container {
-  animation: fadeIn 0.3s ease-out;
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* Loading Animation */
-.chart-loading .q-spinner-dots {
-  animation: pulse 1.5s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
+  .zoom-controls {
+    flex-direction: row;
+    justify-content: center;
   }
 }
 </style>

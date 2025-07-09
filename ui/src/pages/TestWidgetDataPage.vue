@@ -13,7 +13,6 @@
         </p>
       </div>
     </div>
-
     <!-- Test Configuration -->
     <q-card class="q-mb-lg">
       <q-card-section>
@@ -563,7 +562,7 @@ import {
   CHART_COLORS,
   LINE_STYLES
 } from 'src/utils/dataFormatter.js'
-
+import zon from 'src/components/ZoomableLineChart.vue'
 const $q = useQuasar()
 
 // ==================== REACTIVE STATE ====================
