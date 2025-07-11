@@ -1,7 +1,7 @@
 <!--
-  File: src/pages/DynamicPage.vue - ENHANCED VERSION
-  Purpose: Vue Component Integration while preserving ALL existing API functionality
-  Changes: Only replace HTML string generation with Vue components, preserve all APIs
+  File: src/pages/DynamicPage.vue - COMPLETE FIXED VERSION
+  Purpose: Vue Component Integration with proper API compatibility
+  FIXES: WidgetBox integration, layout preservation, API compatibility
 -->
 
 <template>
@@ -145,7 +145,7 @@
       </div>
     </div>
 
-    <!-- ✨ ENHANCED: Vue Component Grid Container -->
+    <!-- ✨ FIXED: Vue Component Grid Container -->
     <div class="dashboard-container">
       <!-- GridStack Container for Layout Management -->
       <div
@@ -153,7 +153,7 @@
         class="grid-stack"
         style="min-height: 400px;"
       >
-        <!-- ✨ NEW: Vue Components for each widget -->
+        <!-- ✨ FIXED: Vue Components for each widget with proper height calculation -->
         <div
           v-for="widget in widgets"
           :key="widget.id"
@@ -165,13 +165,14 @@
           :gs-h="widget.h"
         >
           <div class="grid-stack-item-content">
-            <!-- ✨ ENHANCED: Use WidgetBox component instead of HTML strings -->
+            <!-- ✨ FIXED: Use WidgetBox component with proper props -->
             <WidgetBox
               :widget-data="widgetDataMap[widget.id] || widget"
-              :height="`${widget.h * (gridState.cellHeight + gridState.margin)}px`"
+              :height="calculateWidgetHeight(widget)"
               theme="default"
-              :enable-auto-refresh="true"
+              :auto-refresh-enabled="true"
               :show-debug-info="isDevelopment"
+              :show-footer="true"
               @widget-ready="handleWidgetReady"
               @widget-error="handleWidgetError"
               @widget-updated="handleWidgetUpdated"
@@ -228,11 +229,11 @@
             <div class="row q-gutter-md">
               <div class="col">
                 <div class="text-subtitle2">Grid State</div>
-                <pre class="debug-json">{{ gridState }}</pre>
+                <pre class="debug-json">{{ JSON.stringify(gridState, null, 2) }}</pre>
               </div>
               <div class="col">
-                <div class="text-subtitle2">Widgets Data</div>
-                <pre class="debug-json">{{ widgets }}</pre>
+                <div class="text-subtitle2">Widget Data</div>
+                <pre class="debug-json">{{ JSON.stringify(widgetDataMap, null, 2) }}</pre>
               </div>
             </div>
           </q-card-section>
@@ -254,8 +255,8 @@ import GlobalTimePicker from 'src/components/GlobalTimePicker.vue'
 import WidgetWizard from 'src/components/WidgetWizard.vue'
 import WidgetBox from 'src/components/WidgetBox.vue'
 
-// Import services
-import api from 'src/services/Api.js'
+// Import services - FIXED imports
+import { api } from 'src/boot/axios.js'
 import { useGlobalTime } from 'src/composables/useGlobalTime.js'
 
 // ==================== SETUP ====================
@@ -263,12 +264,12 @@ import { useGlobalTime } from 'src/composables/useGlobalTime.js'
 const route = useRoute()
 const $q = useQuasar()
 
-// Grid reference - UNCHANGED
+// Grid reference
 const gridContainer = ref(null)
 const grid = ref(null)
 const widgetWizardRef = ref(null)
 
-// Page management - UNCHANGED
+// Page management
 const pageTitle = computed(() => {
   const routePath = route.params.pageRoute
   return routePath ? routePath.toString().replace(/\//g, ' / ') : 'Dashboard'
@@ -277,19 +278,19 @@ const pageTitle = computed(() => {
 const pageId = ref(null)
 const currentPageId = computed(() => pageId.value || 'demo-page-id')
 
-// Widget Management - UNCHANGED
+// Widget Management
 const widgets = ref([])
 const widgetDataMap = ref({})
 
-// Loading States - UNCHANGED
+// Loading States
 const savingLayout = ref(false)
 const loadingLayout = ref(false)
 
-// Layout tracking - UNCHANGED
+// Layout tracking
 const lastSaved = ref(null)
 const hasUnsavedChanges = ref(false)
 
-// Grid State - UNCHANGED
+// Grid State
 const gridState = reactive({
   initialized: false,
   cellHeight: 100,
@@ -302,7 +303,7 @@ const gridDimensions = computed(() => ({
   rows: Math.max(1, Math.ceil(widgets.value.length / gridState.columns))
 }))
 
-// Backend Status - UNCHANGED
+// Backend Status
 const backendStatus = reactive({
   connected: false,
   lastCheck: null
@@ -312,7 +313,7 @@ const isDevelopment = computed(() => {
   return process.env.NODE_ENV === 'development' || process.env.DEV
 })
 
-// ==================== GLOBAL TIME INTEGRATION - UNCHANGED ====================
+// ==================== GLOBAL TIME INTEGRATION ====================
 
 const { timeRangeDisplay } = useGlobalTime()
 
@@ -321,7 +322,18 @@ function handleTimeChange() {
   // Note: WidgetBox components will automatically refresh via useGlobalTime composable
 }
 
-// ==================== LIFECYCLE - UNCHANGED ====================
+// ==================== UTILITY FUNCTIONS ====================
+
+/**
+ * Calculate widget height based on grid dimensions
+ */
+function calculateWidgetHeight(widget) {
+  const heightInGridUnits = widget.h || 3
+  const totalHeight = heightInGridUnits * (gridState.cellHeight + gridState.margin) - gridState.margin
+  return `${Math.max(200, totalHeight)}px`
+}
+
+// ==================== LIFECYCLE ====================
 
 async function resolvePageId() {
   try {
@@ -365,7 +377,7 @@ onUnmounted(() => {
   window.removeEventListener('globalTimeChanged', handleTimeChange)
 })
 
-// ==================== WATCHERS - UNCHANGED ====================
+// ==================== WATCHERS ====================
 
 watch(
   () => widgets.value.length,
@@ -374,7 +386,7 @@ watch(
   }
 )
 
-// ==================== GRID MANAGEMENT - MOSTLY UNCHANGED ====================
+// ==================== GRID MANAGEMENT ====================
 
 async function initializeGrid() {
   await nextTick()
@@ -443,7 +455,7 @@ function handleWidgetRemoved(event, items) {
   })
 }
 
-// ==================== WIDGET MANAGEMENT - ENHANCED ====================
+// ==================== WIDGET MANAGEMENT ====================
 
 function openWidgetWizard() {
   console.log('🧙‍♂️ Opening Widget Wizard for page:', currentPageId.value)
@@ -485,26 +497,28 @@ function addSimpleWidget() {
 
   const simpleWidget = {
     widget_id: id,
-    widget_type: 'simple',
-    widget_label: `Test Widget ${widgets.value.length + 1}`,
-    equipment_ids: [],
-    signal_ids: [],
-    filter_selections: {},
+    widget_type: 'line_chart', // FIXED: Changed from 'simple' to 'line_chart' for testing
+    widget_label: `Test Line Chart ${widgets.value.length + 1}`,
+    equipment_ids: [1], // FIXED: Added test equipment ID
+    signal_ids: [1], // FIXED: Added test signal ID
+    filter_selections: {'1_n_bank': '1', '1_dcu': '1'}, // FIXED: Added test filters
     position_data: {
       x: 0,
       y: 0,
-      w: 4,
-      h: 3
+      w: 6,
+      h: 4
     },
     styling_config: {
-      backgroundColor: '#f5f5f5',
-      borderColor: '#ddd'
+      colors: ['#2196F3'],
+      lineStyles: ['solid'],
+      showLegend: true,
+      showGrid: true
     }
   }
 
   addWidgetToGrid(simpleWidget)
 
-  console.log('🧪 Simple widget added for testing:', simpleWidget)
+  console.log('🧪 Test line chart widget added:', simpleWidget)
 }
 
 // ✨ ENHANCED: Simplified addWidgetToGrid - No more HTML generation
@@ -539,6 +553,8 @@ function addWidgetToGrid(widgetData) {
       // GridStack will automatically pick up the element with gs-* attributes
       grid.value.makeWidget(widgetElement)
       console.log('✅ Widget added to grid:', id)
+    } else {
+      console.error('❌ Widget element not found for ID:', id)
     }
   })
 }
@@ -594,32 +610,56 @@ function clearAllWidgets() {
   })
 }
 
-// ==================== WIDGET EVENT HANDLERS - NEW ====================
+// ==================== WIDGET EVENT HANDLERS ====================
 
-function handleWidgetReady(widgetId) {
-  console.log('✅ Widget ready:', widgetId)
+function handleWidgetReady(widgetData) {
+  console.log('✅ Widget ready:', widgetData?.widget?.widget_id || widgetData?.widget_id)
 }
 
-function handleWidgetError(widgetId, error) {
+function handleWidgetError(widgetData) {
+  const widgetId = widgetData?.widget?.widget_id || widgetData?.widget_id
+  const error = widgetData?.error
+
   console.error('❌ Widget error:', widgetId, error)
   $q.notify({
     type: 'negative',
-    message: `Widget error: ${error}`,
+    message: `Widget error: ${error?.message || error}`,
     timeout: 3000
   })
 }
 
-function handleWidgetUpdated(widgetId, data) {
-  console.log('🔄 Widget updated:', widgetId, data)
+function handleWidgetUpdated(widgetData) {
+  const widgetId = widgetData?.widget?.widget_id || widgetData?.widget_id
+  console.log('🔄 Widget updated:', widgetId)
+
+  // Handle type change updates
+  if (widgetData?.action === 'type_change') {
+    const updatedWidget = widgetData.widget
+    const existingWidget = widgets.value.find(w => w.id === updatedWidget.widget_id)
+
+    if (existingWidget) {
+      // Update widget type
+      existingWidget.widget_type = updatedWidget.widget_type
+      widgetDataMap.value[updatedWidget.widget_id] = updatedWidget
+
+      hasUnsavedChanges.value = true
+
+      console.log('🔄 Widget type updated:', updatedWidget.widget_id, 'to', updatedWidget.widget_type)
+    }
+  }
 }
 
-function handleWidgetRefresh(widgetId) {
+function handleWidgetRefresh(widgetData) {
+  const widgetId = widgetData?.widget_id
   console.log('🔄 Widget refresh requested:', widgetId)
+
+  // The individual widget will handle its own refresh via useWidgetData
 }
 
-function handleWidgetEdit(widgetId) {
+function handleWidgetEdit(widgetData) {
+  const widgetId = widgetData?.widget_id
   console.log('✏️ Edit widget:', widgetId)
-  // TODO: Open widget editor
+
   $q.notify({
     type: 'info',
     message: 'Widget editing coming soon...',
@@ -627,7 +667,8 @@ function handleWidgetEdit(widgetId) {
   })
 }
 
-function handleWidgetDuplicate(widgetId) {
+function handleWidgetDuplicate(widgetData) {
+  const widgetId = widgetData?.widget_id
   console.log('📋 Duplicate widget:', widgetId)
 
   const originalWidget = widgetDataMap.value[widgetId]
@@ -653,13 +694,15 @@ function handleWidgetDuplicate(widgetId) {
   }
 }
 
-function handleWidgetDelete(widgetId) {
+function handleWidgetDelete(widgetData) {
+  const widgetId = widgetData?.widget_id
   removeWidget(widgetId)
 }
 
-function handleWidgetExport(widgetId) {
+function handleWidgetExport(widgetData) {
+  const widgetId = widgetData?.widget_id
   console.log('📤 Export widget data:', widgetId)
-  // TODO: Implement data export
+
   $q.notify({
     type: 'info',
     message: 'Data export coming soon...',
@@ -667,15 +710,17 @@ function handleWidgetExport(widgetId) {
   })
 }
 
-function handleChartZoom(widgetId, zoomData) {
-  console.log('🔍 Chart zoom:', widgetId, zoomData)
+function handleChartZoom(chartData) {
+  const widgetId = chartData?.widget?.widget_id
+  console.log('🔍 Chart zoom:', widgetId, chartData?.zoom)
 }
 
-function handleChartPan(widgetId, panData) {
-  console.log('👆 Chart pan:', widgetId, panData)
+function handleChartPan(chartData) {
+  const widgetId = chartData?.widget?.widget_id
+  console.log('👆 Chart pan:', widgetId, chartData?.pan)
 }
 
-// ==================== LAYOUT PERSISTENCE - COMPLETELY UNCHANGED ====================
+// ==================== LAYOUT PERSISTENCE ====================
 
 async function saveLayout() {
   savingLayout.value = true
@@ -838,7 +883,7 @@ async function loadLayout() {
   }
 }
 
-// ==================== UTILITY FUNCTIONS - UNCHANGED ====================
+// ==================== UTILITY FUNCTIONS ====================
 
 async function checkBackendStatus() {
   try {
@@ -867,7 +912,6 @@ function formatTime(date) {
 
   return date.toLocaleDateString()
 }
-
 </script>
 
 <style scoped>
@@ -954,5 +998,310 @@ function formatTime(date) {
 
 :deep(.grid-stack-item.grid-stack-animate) {
   transition: all 0.3s ease;
+}
+
+/* Status Indicators */
+.status-indicator {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 8px;
+}
+
+.status-connected {
+  background-color: #4caf50;
+}
+
+.status-disconnected {
+  background-color: #f44336;
+}
+
+.status-loading {
+  background-color: #ff9800;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.5; }
+  100% { opacity: 1; }
+}
+
+/* Widget Grid Enhancements */
+:deep(.grid-stack-item.ui-resizable-resizing) {
+  opacity: 0.8;
+}
+
+:deep(.grid-stack-item.ui-draggable-dragging) {
+  opacity: 0.8;
+  transform: rotate(3deg);
+}
+
+/* Empty State Enhancements */
+.empty-state .q-icon {
+  opacity: 0.5;
+}
+
+.empty-state:hover {
+  border-color: #1976d2;
+  background: #f8f9ff;
+}
+
+/* Action Bar Responsive */
+@media (max-width: 1024px) {
+  .row.q-gutter-md {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .row.q-gutter-md .q-btn {
+    width: 100%;
+  }
+}
+
+/* Grid Status Bar */
+.grid-status-bar {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(10px);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+
+/* Widget Hover Effects */
+:deep(.grid-stack-item:hover) {
+  z-index: 10;
+}
+
+:deep(.grid-stack-item:hover .grid-stack-item-content) {
+  transform: translateY(-2px);
+  transition: all 0.2s ease;
+}
+
+/* Loading Overlay */
+.loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+/* Debug Panel Styling */
+.debug-panel .q-expansion-item {
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+}
+
+.debug-panel .debug-json {
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+/* Custom Scrollbar for Debug */
+.debug-json::-webkit-scrollbar {
+  width: 6px;
+}
+
+.debug-json::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+.debug-json::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 3px;
+}
+
+.debug-json::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+/* Header Enhancements */
+.page-header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-radius: 8px;
+  padding: 24px;
+  margin-bottom: 24px;
+}
+
+.page-header .text-h4 {
+  color: white;
+}
+
+.page-header .text-subtitle2 {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+/* Widget Type Specific Styling */
+:deep(.widget-box--line_chart) {
+  border-left: 4px solid #2196f3;
+}
+
+:deep(.widget-box--bar_chart) {
+  border-left: 4px solid #9c27b0;
+}
+
+:deep(.widget-box--pie_chart) {
+  border-left: 4px solid #4caf50;
+}
+
+:deep(.widget-box--table) {
+  border-left: 4px solid #00bcd4;
+}
+
+:deep(.widget-box--kpi) {
+  border-left: 4px solid #ff9800;
+}
+
+/* Success/Error States */
+.success-state {
+  color: #4caf50;
+}
+
+.error-state {
+  color: #f44336;
+}
+
+.warning-state {
+  color: #ff9800;
+}
+
+/* Tooltip Enhancements */
+.q-tooltip {
+  font-size: 12px;
+  padding: 6px 8px;
+}
+
+/* Button Group Styling */
+.q-btn-group .q-btn {
+  border-radius: 0;
+}
+
+.q-btn-group .q-btn:first-child {
+  border-top-left-radius: 4px;
+  border-bottom-left-radius: 4px;
+}
+
+.q-btn-group .q-btn:last-child {
+  border-top-right-radius: 4px;
+  border-bottom-right-radius: 4px;
+}
+
+/* Widget Animation on Add */
+@keyframes widgetSlideIn {
+  from {
+    opacity: 0;
+    transform: scale(0.8) translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+:deep(.grid-stack-item.widget-entering) {
+  animation: widgetSlideIn 0.3s ease-out;
+}
+
+/* Enhanced Focus States */
+.q-btn:focus {
+  outline: 2px solid #1976d2;
+  outline-offset: 2px;
+}
+
+/* Custom Chip Styling */
+.q-chip {
+  font-weight: 500;
+}
+
+.q-chip.dense {
+  font-size: 11px;
+}
+
+/* Time Display Styling */
+.time-display {
+  font-family: 'Roboto Mono', monospace;
+  font-size: 12px;
+  background: rgba(0, 0, 0, 0.05);
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+/* Widget Count Badge */
+.widget-count-badge {
+  background: linear-gradient(45deg, #667eea, #764ba2);
+  color: white;
+  border-radius: 12px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* Enhanced Grid Styling */
+.grid-stack {
+  position: relative;
+}
+
+.grid-stack::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background:
+    radial-gradient(circle at 20px 20px, rgba(0,0,0,0.02) 1px, transparent 1px);
+  background-size: 20px 20px;
+  pointer-events: none;
+}
+
+/* Final Responsive Adjustments */
+@media (max-width: 600px) {
+  .dashboard-container {
+    padding: 0;
+  }
+
+  .grid-stack {
+    border-radius: 0;
+    padding: 5px;
+  }
+
+  .text-h4 {
+    font-size: 1.5rem;
+  }
+
+  .action-bar {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .status-chips {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+}
+
+/* Print Styles */
+@media print {
+  .q-btn,
+  .action-bar,
+  .debug-panel {
+    display: none !important;
+  }
+
+  .grid-stack {
+    background: white !important;
+    box-shadow: none !important;
+  }
+
+  :deep(.grid-stack-item-content) {
+    box-shadow: 1px 1px 3px rgba(0,0,0,0.1) !important;
+  }
 }
 </style>

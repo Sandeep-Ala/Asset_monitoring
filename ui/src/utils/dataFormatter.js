@@ -1,6 +1,6 @@
 // src/utils/dataFormatter.js - FIXED VERSION
-// Critical fixes for timestamp processing and chart data ordering
-// FIXES: Time-only timestamps, chronological ordering, date range display
+// Critical fixes for validation function and chart data processing
+// FIXES: validateChartData function returning proper validation object
 
 import { parseISO, isValid, format } from 'date-fns'
 
@@ -130,6 +130,82 @@ export function transformWidgetDataToChart(backendData, widgetConfig = {}, optio
   }
 }
 
+// ==================== CRITICAL FIX: CHART DATA VALIDATION ====================
+
+/**
+ * FIXED: Validate chart data structure for Chart.js compatibility
+ * @param {Object} chartData - Chart data to validate
+ * @returns {Object} Validation result with isValid, errors, and warnings
+ */
+export function validateChartData(chartData) {
+  console.log('🔍 Validating chart data:', chartData)
+
+  const errors = []
+  const warnings = []
+
+  if (!chartData) {
+    errors.push('Chart data is null or undefined')
+    return {
+      isValid: false,
+      errors,
+      warnings,
+      structure: { labelsCount: 0, datasetsCount: 0, totalDataPoints: 0, isEmpty: true }
+    }
+  }
+
+  // Check for required Chart.js structure
+  if (!Array.isArray(chartData.labels)) {
+    errors.push('Missing or invalid labels array')
+  }
+
+  if (!Array.isArray(chartData.datasets)) {
+    errors.push('Missing or invalid datasets array')
+  }
+
+  // Validate datasets structure
+  if (chartData.datasets && Array.isArray(chartData.datasets)) {
+    chartData.datasets.forEach((dataset, index) => {
+      if (!dataset.label) {
+        warnings.push(`Dataset ${index} missing label`)
+      }
+      if (!Array.isArray(dataset.data)) {
+        errors.push(`Dataset ${index} has invalid data array`)
+      }
+      if (!dataset.borderColor && !dataset.backgroundColor) {
+        warnings.push(`Dataset ${index} missing color configuration`)
+      }
+    })
+  }
+
+  // Check data consistency
+  if (chartData.labels && chartData.datasets && Array.isArray(chartData.labels) && Array.isArray(chartData.datasets)) {
+    const labelsCount = chartData.labels.length
+    chartData.datasets.forEach((dataset, index) => {
+      if (dataset.data && Array.isArray(dataset.data) && dataset.data.length !== labelsCount) {
+        warnings.push(`Dataset ${index} data length (${dataset.data.length}) doesn't match labels length (${labelsCount})`)
+      }
+    })
+  }
+
+  const structure = {
+    labelsCount: chartData.labels?.length || 0,
+    datasetsCount: chartData.datasets?.length || 0,
+    totalDataPoints: chartData.datasets?.reduce((total, dataset) =>
+      total + (dataset.data?.length || 0), 0) || 0,
+    isEmpty: chartData.isEmpty || false
+  }
+
+  const result = {
+    isValid: errors.length === 0,
+    errors,
+    warnings,
+    structure
+  }
+
+  console.log('✅ Chart data validation result:', result)
+  return result
+}
+
 // ==================== CRITICAL FIX: TIMESTAMP TRANSFORMATION ====================
 
 /**
@@ -183,11 +259,10 @@ function transformTimestampsWithDates(timestamps, backendData = {}) {
         }
       }
 
-      console.warn(`⚠️ Could not parse timestamp at index ${index}:`, timestamp)
+      console.warn('⚠️ Could not parse timestamp:', timestamp)
       return new Date()
-
     } catch (error) {
-      console.warn('⚠️ Timestamp parsing error:', timestamp, error)
+      console.warn('⚠️ Error parsing timestamp:', timestamp, error)
       return new Date()
     }
   })
@@ -195,60 +270,50 @@ function transformTimestampsWithDates(timestamps, backendData = {}) {
 
 /**
  * Extract date context from backend data
- * FIXED: Gets actual query date range instead of defaulting to today
  */
 function extractDateContext(backendData) {
-  try {
-    // Try to get date range from widget_info query
-    const queryString = backendData.widget_info?.query_executed
-    if (queryString) {
-      // Extract timestamps from query like: WHERE t_sampling_time >= '2025-03-01T08:20:00.000Z'
-      const startMatch = queryString.match(/t_sampling_time >= '([^']+)'/)
-      const endMatch = queryString.match(/t_sampling_time <= '([^']+)'/)
+  // Try to get date range from timeRange first
+  if (backendData.timeRange) {
+    const startDate = new Date(backendData.timeRange.start)
+    const endDate = new Date(backendData.timeRange.end)
 
-      if (startMatch && endMatch) {
-        return {
-          startDate: new Date(startMatch[1]),
-          endDate: new Date(endMatch[1]),
-          source: 'query'
-        }
-      }
+    if (isValid(startDate) && isValid(endDate)) {
+      return { startDate, endDate }
     }
+  }
 
-    // Try timeRange from API request
-    if (backendData.timeRange?.start && backendData.timeRange?.end) {
-      return {
-        startDate: new Date(backendData.timeRange.start),
-        endDate: new Date(backendData.timeRange.end),
-        source: 'timeRange'
-      }
-    }
+  // Fallback to metadata
+  if (backendData.metadata?.timeRange) {
+    const startDate = new Date(backendData.metadata.timeRange.start)
+    const endDate = new Date(backendData.metadata.timeRange.end)
 
-    // Fallback to current date
-    console.warn('⚠️ Could not extract date context, using current date')
-    return {
-      startDate: new Date(),
-      endDate: new Date(),
-      source: 'fallback'
+    if (isValid(startDate) && isValid(endDate)) {
+      return { startDate, endDate }
     }
-  } catch (error) {
-    console.warn('⚠️ Error extracting date context:', error)
-    return {
-      startDate: new Date(),
-      endDate: new Date(),
-      source: 'error'
-    }
+  }
+
+  // Default fallback
+  const now = new Date()
+  const weekAgo = new Date(now - 7 * 24 * 60 * 60 * 1000)
+
+  return {
+    startDate: weekAgo,
+    endDate: now
   }
 }
 
 /**
- * Combine time-only string with actual date range
- * CRITICAL FIX: Distributes times across the actual date range instead of using single day
+ * Combine time-only string with date range
  */
 function combineTimeWithDateRange(timeString, index, totalPoints, dateContext) {
   try {
-    const [hours, minutes, seconds] = timeString.split(':').map(Number)
-    const milliseconds = seconds % 1 > 0 ? Math.round((seconds % 1) * 1000) : 0
+    const timeParts = timeString.split(':')
+    const hours = parseInt(timeParts[0], 10)
+    const minutes = parseInt(timeParts[1], 10)
+    const secondsPart = timeParts[2] || '0'
+    const seconds = parseFloat(secondsPart)
+    const milliseconds = seconds >= Math.floor(seconds) ?
+      Math.round((seconds % 1) * 1000) : 0
 
     // CRITICAL FIX: Calculate actual date based on position in time range
     const startDate = dateContext.startDate
@@ -339,182 +404,88 @@ function transformDataset(dataset, chartLabels, backendLabels, index, widgetConf
     // Get styling configuration
     const stylingConfig = widgetConfig?.styling_config || {}
     const color = getSignalColor(index)
-    const lineStyle = getLineStyle(stylingConfig?.line_styles?.[index] || 'solid')
+    const lineStyle = getLineStyle(stylingConfig?.lineStyles?.[index] || 'solid')
 
     console.log(`📊 Transformed dataset "${label}":`, {
       originalDataLength: data.length,
       chartDataLength: chartData.length,
-      unit: unit,
-      color: color
+      unit,
+      color
     })
 
     return {
-      label: label,
+      label: unit ? `${label} (${unit})` : label,
       data: chartData,
       borderColor: color,
-      backgroundColor: 'transparent',
-      pointBackgroundColor: color,
-      pointBorderColor: '#ffffff',
-
-      // Line styling
-      borderWidth: stylingConfig.line_width || 2,
-      tension: stylingConfig.curve_smooth || 0.1,
-      fill: stylingConfig.fill_area || false,
-
-      // Point styling
-      pointRadius: stylingConfig.show_points !== false ? (stylingConfig.point_radius || 3) : 0,
-      pointHoverRadius: stylingConfig.show_points !== false ? 6 : 0,
-      pointBorderWidth: 1,
-
-      // Line style pattern
-      ...lineStyle,
-
-      // Metadata
-      unit: unit,
-      originalLength: data.length
+      backgroundColor: color + '20', // 20% opacity
+      borderWidth: 2,
+      pointRadius: stylingConfig?.pointRadius || 2,
+      pointHoverRadius: stylingConfig?.pointRadius ? stylingConfig.pointRadius + 2 : 4,
+      fill: false,
+      tension: 0.1,
+      ...lineStyle
     }
-
   } catch (error) {
-    console.error('❌ Dataset transformation failed:', error)
+    console.error('❌ Error transforming dataset:', error)
     return {
-      label: `Error: ${dataset?.label || 'Unknown'}`,
+      label: 'Error Dataset',
       data: [],
-      borderColor: '#ff0000',
-      backgroundColor: 'transparent'
+      borderColor: '#f44336',
+      backgroundColor: '#f4433620'
     }
   }
 }
 
 /**
- * Map data values to chart labels creating {x, y} objects for Chart.js
- * @param {Array} dataValues - Array of numeric values
- * @param {Array} chartLabels - Array of Date objects
- * @param {Array} backendLabels - Original backend labels
- * @returns {Array} Array of {x, y} objects for Chart.js
+ * Map data values to chart labels
  */
-function mapDataToLabels(dataValues, chartLabels, backendLabels) {
-  if (!Array.isArray(dataValues) || !Array.isArray(chartLabels)) {
-    console.warn('⚠️ Invalid data or labels for mapping:', {
-      dataValues: Array.isArray(dataValues),
-      chartLabels: Array.isArray(chartLabels)
-    })
+function mapDataToLabels(data, chartLabels, backendLabels) {
+  if (!Array.isArray(data) || !Array.isArray(chartLabels)) {
     return []
   }
 
-  const minLength = Math.min(dataValues.length, chartLabels.length)
-
-  return Array.from({ length: minLength }, (_, i) => ({
-    x: chartLabels[i],
-    y: dataValues[i]
-  }))
-}
-
-// ==================== STYLING UTILITIES ====================
-
-/**
- * Get signal color by index
- * @param {number} index - Dataset index
- * @param {number} alpha - Alpha transparency (0-1)
- * @returns {string} Color string
- */
-export function getSignalColor(index, alpha = 1) {
-  const color = CHART_COLORS[index % CHART_COLORS.length]
-
-  if (alpha === 1) {
-    return color
-  }
-
-  // Convert hex to rgba with alpha
-  const hex = color.replace('#', '')
-  const r = parseInt(hex.substr(0, 2), 16)
-  const g = parseInt(hex.substr(2, 2), 16)
-  const b = parseInt(hex.substr(4, 2), 16)
-
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`
-}
-
-/**
- * Get line style configuration
- * @param {string} styleType - Style type ('solid', 'dashed', etc.)
- * @returns {Object} Chart.js line style configuration
- */
-export function getLineStyle(styleType) {
-  const styles = {
-    'solid': {},
-    'dashed': { borderDash: [5, 5] },
-    'dotted': { borderDash: [2, 2] },
-    'dashdot': { borderDash: [10, 5, 2, 5] },
-    'longdash': { borderDash: [15, 3, 3, 3] }
-  }
-
-  return styles[styleType] || styles['solid']
-}
-
-// ==================== VALIDATION ====================
-
-/**
- * Validate Chart.js data structure
- * @param {Object} chartData - Chart data to validate
- * @returns {boolean} True if valid
- */
-export function validateChartData(chartData) {
-  try {
-    if (!chartData || typeof chartData !== 'object') {
-      return false
+  return data.map((value, index) => {
+    const timestamp = chartLabels[index] || new Date()
+    return {
+      x: timestamp,
+      y: typeof value === 'number' ? value : parseFloat(value) || 0
     }
-
-    if (chartData.isEmpty) {
-      return true // Empty data is valid
-    }
-
-    // Check datasets
-    if (!Array.isArray(chartData.datasets)) {
-      console.warn('⚠️ Chart data validation failed: datasets is not an array')
-      return false
-    }
-
-    // Validate each dataset
-    for (const dataset of chartData.datasets) {
-      if (!Array.isArray(dataset.data)) {
-        console.warn('⚠️ Chart data validation failed: dataset.data is not an array')
-        return false
-      }
-
-      // Check if data points have x,y structure for time series
-      for (const point of dataset.data) {
-        if (typeof point !== 'object' || !point.hasOwnProperty('x') || !point.hasOwnProperty('y')) {
-          console.warn('⚠️ Chart data validation failed: data point missing x,y structure')
-          return false
-        }
-      }
-    }
-
-    return true
-
-  } catch (error) {
-    console.error('❌ Chart data validation error:', error)
-    return false
-  }
+  })
 }
 
 // ==================== UTILITY FUNCTIONS ====================
 
 /**
- * Format numeric value with intelligent notation
- * @param {number} value - Numeric value
- * @param {number} precision - Decimal precision
- * @returns {string} Formatted value
+ * Get color for signal by index
+ */
+export function getSignalColor(index) {
+  return CHART_COLORS[index % CHART_COLORS.length]
+}
+
+/**
+ * Get line style configuration
+ */
+function getLineStyle(styleType) {
+  switch (styleType) {
+    case 'dashed': return LINE_STYLES[1]
+    case 'dotted': return LINE_STYLES[2]
+    case 'dash-dot': return LINE_STYLES[3]
+    case 'long-dash': return LINE_STYLES[4]
+    default: return LINE_STYLES[0] // solid
+  }
+}
+
+/**
+ * Format numeric value with appropriate units
  */
 export function formatNumericValue(value, precision = 2) {
   if (typeof value !== 'number' || isNaN(value)) {
     return '0'
   }
 
-  const absValue = Math.abs(value)
-
-  if (absValue >= 1000000) {
+  if (Math.abs(value) >= 1000000) {
     return (value / 1000000).toFixed(precision) + 'M'
-  } else if (absValue >= 1000) {
+  } else if (Math.abs(value) >= 1000) {
     return (value / 1000).toFixed(precision) + 'K'
   } else {
     return value.toFixed(precision)
@@ -523,46 +494,47 @@ export function formatNumericValue(value, precision = 2) {
 
 /**
  * Generate mock chart data for testing
- * @param {Object} options - Mock data options
- * @returns {Object} Mock chart data
  */
-export function generateMockChartData(options = {}) {
-  const {
-    pointCount = 50,
-    signalCount = 1,
-    timeRange = 24 * 60 * 60 * 1000, // 24 hours
-    baseValue = 50,
-    variance = 20
-  } = options
+export function generateMockChartData(pointCount = 50) {
+  const labels = []
+  const data = []
+  const now = new Date()
 
-  const startTime = new Date()
-  const timeStep = timeRange / pointCount
-
-  const labels = Array.from({ length: pointCount }, (_, i) =>
-    new Date(startTime.getTime() + i * timeStep)
-  )
-
-  const datasets = Array.from({ length: signalCount }, (_, signalIndex) => ({
-    label: `Signal ${signalIndex + 1}`,
-    data: labels.map((time, i) => ({
-      x: time,
-      y: baseValue + Math.sin(i * 0.1) * variance + (Math.random() - 0.5) * 10
-    })),
-    borderColor: getSignalColor(signalIndex),
-    backgroundColor: 'transparent',
-    borderWidth: 2,
-    tension: 0.1,
-    pointRadius: 2
-  }))
+  for (let i = 0; i < pointCount; i++) {
+    const timestamp = new Date(now - (pointCount - i) * 60000) // 1 minute intervals
+    labels.push(timestamp)
+    data.push({
+      x: timestamp,
+      y: Math.random() * 100 + Math.sin(i * 0.1) * 20
+    })
+  }
 
   return {
     labels,
-    datasets,
+    datasets: [{
+      label: 'Mock Data',
+      data,
+      borderColor: getSignalColor(0),
+      backgroundColor: getSignalColor(0) + '20',
+      borderWidth: 2,
+      pointRadius: 2,
+      fill: false,
+      tension: 0.1
+    }],
     isEmpty: false,
     metadata: {
-      totalPoints: pointCount * signalCount,
-      timeRange: { start: startTime, end: labels[labels.length - 1] },
-      isMockData: true
+      totalPoints: pointCount,
+      timeRange: {
+        start: labels[0],
+        end: labels[labels.length - 1]
+      }
     }
   }
+}
+
+// Export all functions
+export {
+  CHART_COLORS,
+  LINE_STYLES,
+  // formatNumericValue
 }

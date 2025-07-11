@@ -1,7 +1,7 @@
 <!--
-  File: src/components/WidgetBox.vue - ENHANCED VERSION
-  Purpose: Enhanced widget container with real chart integration
-  Features: ZoomableLineChart integration, multiple widget types, error handling
+  File: src/components/WidgetBox.vue - FIXED VERSION
+  Purpose: Enhanced widget container with proper chart integration
+  FIXES: Chart rendering issues, API compatibility, data flow
 -->
 
 <template>
@@ -24,6 +24,14 @@
         >
           {{ widgetTypeLabel }}
         </q-chip>
+
+        <!-- Refresh Status -->
+        <q-spinner
+          v-if="isRefreshing"
+          color="primary"
+          size="16px"
+          class="q-mr-sm"
+        />
 
         <!-- Widget Actions -->
         <q-btn-dropdown
@@ -81,7 +89,7 @@
     <!-- Widget Content Area -->
     <div class="widget-content" :style="{ height: contentHeight }">
 
-      <!-- Line Chart Widget -->
+      <!-- ✨ FIXED: ZoomableLineChart with proper props -->
       <ZoomableLineChart
         v-if="widgetData.widget_type === 'line_chart'"
         :widget-id="widgetData.widget_id"
@@ -99,7 +107,7 @@
         @pan-changed="onPanChanged"
       />
 
-      <!-- Bar Chart Widget -->
+      <!-- Bar Chart Widget (Future) -->
       <div
         v-else-if="widgetData.widget_type === 'bar_chart'"
         class="placeholder-widget"
@@ -107,9 +115,17 @@
         <q-icon name="bar_chart" size="48px" color="primary" />
         <div class="placeholder-text">Bar Chart</div>
         <div class="placeholder-subtext">Coming soon...</div>
+        <q-btn
+          icon="timeline"
+          label="Switch to Line Chart"
+          color="primary"
+          outline
+          size="sm"
+          @click="suggestLineChart"
+        />
       </div>
 
-      <!-- Pie Chart Widget -->
+      <!-- Pie Chart Widget (Future) -->
       <div
         v-else-if="widgetData.widget_type === 'pie_chart'"
         class="placeholder-widget"
@@ -117,9 +133,17 @@
         <q-icon name="pie_chart" size="48px" color="secondary" />
         <div class="placeholder-text">Pie Chart</div>
         <div class="placeholder-subtext">Coming soon...</div>
+        <q-btn
+          icon="timeline"
+          label="Switch to Line Chart"
+          color="secondary"
+          outline
+          size="sm"
+          @click="suggestLineChart"
+        />
       </div>
 
-      <!-- Table Widget -->
+      <!-- Table Widget (Future) -->
       <div
         v-else-if="widgetData.widget_type === 'table'"
         class="placeholder-widget"
@@ -127,6 +151,14 @@
         <q-icon name="table_chart" size="48px" color="info" />
         <div class="placeholder-text">Data Table</div>
         <div class="placeholder-subtext">Coming soon...</div>
+        <q-btn
+          icon="timeline"
+          label="Switch to Line Chart"
+          color="info"
+          outline
+          size="sm"
+          @click="suggestLineChart"
+        />
       </div>
 
       <!-- KPI/Metric Widget -->
@@ -150,6 +182,15 @@
         <q-icon name="widgets" size="48px" color="grey-6" />
         <div class="simple-widget-text">Simple Widget</div>
         <div class="simple-widget-id">ID: {{ widgetData.widget_id }}</div>
+        <q-btn
+          icon="timeline"
+          label="Convert to Line Chart"
+          color="primary"
+          outline
+          size="sm"
+          @click="convertToLineChart"
+          class="q-mt-md"
+        />
       </div>
 
       <!-- Unknown Widget Type -->
@@ -157,6 +198,15 @@
         <q-icon name="help_outline" size="48px" color="warning" />
         <div class="unknown-text">Unknown Widget Type</div>
         <div class="unknown-subtext">{{ widgetData.widget_type }}</div>
+        <q-btn
+          icon="timeline"
+          label="Convert to Line Chart"
+          color="warning"
+          outline
+          size="sm"
+          @click="convertToLineChart"
+          class="q-mt-md"
+        />
       </div>
 
     </div>
@@ -194,9 +244,9 @@ const props = defineProps({
   },
 
   // Display Options
-  contentHeight: {
+  height: {
     type: String,
-    default: 'calc(100% - 60px)'
+    default: '300px'
   },
 
   // Features
@@ -242,6 +292,7 @@ const emit = defineEmits([
 
 // Widget status
 const isReady = ref(false)
+const isRefreshing = ref(false)
 const hasError = ref(false)
 const errorMessage = ref('')
 const lastUpdated = ref(null)
@@ -252,9 +303,19 @@ const chartRef = ref(null)
 
 // ==================== COMPUTED PROPERTIES ====================
 
+const contentHeight = computed(() => {
+  // Calculate content height minus header and footer
+  const headerHeight = 60
+  const footerHeight = props.showFooter ? 32 : 0
+  const totalHeight = parseInt(props.height) || 300
+
+  return `${Math.max(100, totalHeight - headerHeight - footerHeight)}px`
+})
+
 const widgetClasses = computed(() => ({
   'widget-box--ready': isReady.value,
   'widget-box--error': hasError.value,
+  'widget-box--refreshing': isRefreshing.value,
   'widget-box--dark': props.theme === 'dark',
   'widget-box--minimal': props.theme === 'minimal',
   [`widget-box--${props.widgetData.widget_type}`]: true
@@ -308,14 +369,16 @@ const widgetSubtitle = computed(() => {
 
 const statusClass = computed(() => {
   if (hasError.value) return 'status-error'
+  if (isRefreshing.value) return 'status-loading'
   if (isReady.value) return 'status-ready'
   return 'status-loading'
 })
 
 const statusText = computed(() => {
   if (hasError.value) return 'Error'
+  if (isRefreshing.value) return 'Loading...'
   if (isReady.value) return dataCount.value > 0 ? `${dataCount.value} points` : 'No data'
-  return 'Loading...'
+  return 'Initializing...'
 })
 
 // KPI Widget computed properties
@@ -371,6 +434,7 @@ function onChartReady(chartInstance) {
   console.log('📊 Chart ready in WidgetBox:', props.widgetData.widget_id)
   isReady.value = true
   hasError.value = false
+  isRefreshing.value = false
   lastUpdated.value = new Date()
 
   emit('widget-ready', {
@@ -382,6 +446,7 @@ function onChartReady(chartInstance) {
 function onChartError(error) {
   console.error('📊 Chart error in WidgetBox:', error)
   hasError.value = true
+  isRefreshing.value = false
   errorMessage.value = error.message || 'Chart error'
 
   emit('widget-error', {
@@ -393,6 +458,7 @@ function onChartError(error) {
 function onDataUpdated(data) {
   console.log('📊 Chart data updated in WidgetBox')
   lastUpdated.value = new Date()
+  isRefreshing.value = false
 
   // Count total data points
   if (data && data.datasets) {
@@ -426,10 +492,16 @@ function onPanChanged(panData) {
 function refreshWidget() {
   console.log('🔄 Refreshing widget:', props.widgetData.widget_id)
 
-  // Reset status
+  // Set refreshing state
+  isRefreshing.value = true
   lastUpdated.value = new Date()
 
   emit('widget-refresh', props.widgetData)
+
+  // Auto-clear refreshing state after timeout (fallback)
+  setTimeout(() => {
+    isRefreshing.value = false
+  }, 10000)
 
   $q.notify({
     type: 'info',
@@ -472,6 +544,38 @@ function deleteWidget() {
   })
 }
 
+function suggestLineChart() {
+  $q.dialog({
+    title: 'Convert to Line Chart',
+    message: 'This widget type is not yet implemented. Would you like to convert it to a Line Chart?',
+    cancel: true,
+    persistent: true
+  }).onOk(() => {
+    convertToLineChart()
+  })
+}
+
+function convertToLineChart() {
+  console.log('🔄 Converting widget to line chart:', props.widgetData.widget_id)
+
+  // Create updated widget data
+  const updatedWidget = {
+    ...props.widgetData,
+    widget_type: 'line_chart'
+  }
+
+  emit('widget-updated', {
+    widget: updatedWidget,
+    action: 'type_change'
+  })
+
+  $q.notify({
+    type: 'info',
+    message: 'Widget converted to Line Chart',
+    timeout: 2000
+  })
+}
+
 // ==================== UTILITY FUNCTIONS ====================
 
 function formatRelativeTime(date) {
@@ -490,11 +594,19 @@ function formatRelativeTime(date) {
   return date.toLocaleDateString()
 }
 
+// ==================== WATCHERS ====================
+
+// Watch for widget data changes
+watch(() => props.widgetData, (newData) => {
+  console.log('🔄 Widget data changed in WidgetBox:', newData?.widget_id)
+}, { deep: true })
+
 // ==================== EXPOSE PUBLIC METHODS ====================
 
 defineExpose({
   refresh: refreshWidget,
   isReady,
+  isRefreshing,
   hasError,
   errorMessage,
   lastUpdated,
@@ -523,6 +635,10 @@ defineExpose({
   background: #fff5f5;
 }
 
+.widget-box--refreshing {
+  opacity: 0.8;
+}
+
 .widget-box--dark {
   background: #2d2d2d;
   border-color: #404040;
@@ -543,6 +659,7 @@ defineExpose({
   border-bottom: 1px solid #f0f0f0;
   background: #fafafa;
   min-height: 60px;
+  flex-shrink: 0;
 }
 
 .widget-title-section {
@@ -590,7 +707,6 @@ defineExpose({
 /* Widget Content */
 .widget-content {
   flex: 1;
-  padding: 8px;
   overflow: hidden;
   position: relative;
 }
@@ -606,6 +722,7 @@ defineExpose({
   height: 100%;
   text-align: center;
   color: #666;
+  padding: 20px;
 }
 
 .placeholder-text,
@@ -622,6 +739,7 @@ defineExpose({
   font-size: 12px;
   color: #999;
   margin-top: 4px;
+  margin-bottom: 16px;
 }
 
 /* KPI Widget */
@@ -632,6 +750,7 @@ defineExpose({
   justify-content: center;
   height: 100%;
   text-align: center;
+  padding: 20px;
 }
 
 .kpi-value {
@@ -678,6 +797,7 @@ defineExpose({
   font-size: 11px;
   color: #666;
   min-height: 32px;
+  flex-shrink: 0;
 }
 
 .footer-left {

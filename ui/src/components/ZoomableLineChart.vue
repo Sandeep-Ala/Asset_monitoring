@@ -1,12 +1,7 @@
 <!--
-  File: src/components/ZoomableLineChart.vue - FINAL WORKING VERSION
-  Purpose: Professional interactive line chart with Chart.js integration
-
-  CRITICAL FIXES APPLIED:
-  1. Added missing LineController registration
-  2. Fixed readonly data issue by cloning reactive data
-  3. Enhanced canvas detection and lifecycle management
-  4. Working manual refresh and time synchronization
+  File: src/components/ZoomableLineChart.vue - FIXED VERSION
+  Purpose: Professional interactive line chart with proper API integration
+  FIXES: API compatibility, chart rendering, data flow issues
 -->
 
 <template>
@@ -152,8 +147,8 @@
           <div><strong>Is Empty:</strong> {{ isEmpty ? '⚠️ Yes' : '✅ No' }}</div>
           <div><strong>Current Time:</strong> {{ formatTimeRange }}</div>
           <div><strong>Global Time:</strong> {{ globalTimeDisplay }}</div>
-          <div><strong>Canvas Size:</strong> {{ canvasSize }}</div>
-          <div><strong>Container:</strong> {{ containerInfo }}</div>
+          <div><strong>API Status:</strong> {{ apiStatus }}</div>
+          <div><strong>Data Status:</strong> {{ dataStatus }}</div>
         </div>
       </details>
     </div>
@@ -180,7 +175,7 @@ import {
 import zoomPlugin from 'chartjs-plugin-zoom'
 import 'chartjs-adapter-date-fns'
 
-// Import composables
+// Import composables - FIXED imports
 import { useWidgetData } from 'src/composables/useWidgetData.js'
 import { useGlobalTime } from 'src/composables/useGlobalTime.js'
 
@@ -236,46 +231,39 @@ const emit = defineEmits([
 const chartCanvas = ref(null)
 const chartInstance = ref(null)
 const isChartReady = ref(false)
+const isInitialLoad = ref(true)
 
-// ==================== DATA INTEGRATION ====================
+// ==================== DATA INTEGRATION - FIXED ====================
 
 const globalTime = useGlobalTime()
 
+// CRITICAL FIX: Use the new useWidgetData composable correctly
 const {
   rawData,
   chartData,
   metadata,
   isLoading,
-  isInitialLoad,
+  isRefreshing,
   isBackgroundRefresh,
-  isRetrying,
   error,
   errorCount,
-  lastErrorTime,
   hasData,
   isEmpty,
-  lastFetchTime,
-  dataAge,
   dataStatus,
   currentTimeRange,
-  isDataStale,
-  needsBackgroundRefresh,
-  performanceMetrics,
-  initialize: initializeWidgetData,
+  initialize,
   refresh,
   retryFetch,
-  clearCache,
-  startAutoRefresh,
-  stopAutoRefresh,
-  cleanup: cleanupWidgetData
+  clearCache
 } = useWidgetData(
   props.widgetId,
   props.widgetConfig,
   {
     enableCaching: true,
-    enableAutoRefresh: false
+    enableAutoRefresh: props.enableAutoRefresh,
+    debugMode: props.showDebugInfo
   },
-  null // Always use global time
+  null // Use global time by default
 )
 
 // ==================== COMPUTED PROPERTIES ====================
@@ -288,8 +276,8 @@ const totalDataPoints = computed(() => {
 })
 
 const lastUpdateTime = computed(() => {
-  if (!lastFetchTime.value) return 'Never'
-  return new Date(lastFetchTime.value).toLocaleTimeString()
+  if (!dataStatus.value.lastFetchTime) return 'Never'
+  return new Date(dataStatus.value.lastFetchTime).toLocaleTimeString()
 })
 
 const formatTimeRange = computed(() => {
@@ -306,22 +294,11 @@ const globalTimeDisplay = computed(() => {
   return `${start} - ${end}`
 })
 
-const isRefreshing = computed(() => {
-  return isBackgroundRefresh.value || isRetrying.value
-})
-
-// Debug computed properties
-const canvasSize = computed(() => {
-  if (!chartCanvas.value) return 'N/A'
-  const rect = chartCanvas.value.getBoundingClientRect()
-  return `${rect.width}x${rect.height}`
-})
-
-const containerInfo = computed(() => {
-  const container = document.querySelector(`[data-id="${props.widgetId}"]`)
-  if (!container) return 'Not found'
-  const rect = container.getBoundingClientRect()
-  return `${rect.width}x${rect.height}`
+const apiStatus = computed(() => {
+  if (error.value) return '❌ Error'
+  if (isLoading.value) return '⏳ Loading'
+  if (hasData.value) return '✅ Connected'
+  return '⚠️ No Data'
 })
 
 // ==================== CHART.JS SETUP - FIXED ====================
@@ -347,32 +324,20 @@ onMounted(async () => {
   console.log('🚀 ZoomableLineChart mounting for widget:', props.widgetId)
 
   try {
-    // Initialize widget data management first
-    await initializeWidgetData()
+    // CRITICAL FIX: Initialize widget data first
+    console.log('📊 Initializing widget data...')
+    await initialize()
+    isInitialLoad.value = false
 
-    // Enhanced canvas waiting with fallback
-    try {
-      await waitForChartRequirements()
-    } catch (err) {
-      console.warn('⚠️ Primary canvas waiting failed, trying alternative approach...')
-      await waitForChartRequirementsAlternative()
-    }
+    console.log('📊 Widget data initialized, setting up chart watcher...')
 
-    emit('chart-ready', chartInstance.value)
+    // Setup chart initialization watcher
+    setupChartWatcher()
+
+    console.log('✅ ZoomableLineChart setup complete')
 
   } catch (err) {
     console.error('❌ Error mounting chart:', err)
-
-    const debugInfo = {
-      widgetId: props.widgetId,
-      canvasRef: !!chartCanvas.value,
-      hasData: hasData.value,
-      isEmpty: isEmpty.value,
-      isLoading: isLoading.value,
-      containerExists: !!document.querySelector(`[data-id="${props.widgetId}"]`)
-    }
-
-    console.error('📊 Chart mount debug info:', debugInfo)
     emit('chart-error', err)
   }
 })
@@ -380,126 +345,17 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   console.log('🧹 ZoomableLineChart unmounting')
   destroyChart()
-  cleanupWidgetData()
   removeEventListeners()
 })
 
-// ==================== ENHANCED DOM WAITING LOGIC ====================
+// ==================== CHART INITIALIZATION LOGIC ====================
 
-async function waitForChartRequirements() {
-  console.log('⏳ Waiting for chart requirements...')
-
-  let domReady = false
-  let attempts = 0
-  const maxAttempts = 10
-  const baseDelay = 150
-
-  while (!domReady && attempts < maxAttempts) {
-    await nextTick()
-
-    // Exponential backoff delay
-    const delay = baseDelay * Math.pow(1.5, attempts)
-    await new Promise(resolve => setTimeout(resolve, delay))
-
-    // Check if canvas element exists AND is visible
-    if (chartCanvas.value) {
-      const canvasRect = chartCanvas.value.getBoundingClientRect()
-      const isVisible = canvasRect.width > 0 && canvasRect.height > 0
-
-      if (isVisible) {
-        console.log('✅ Canvas element found and visible')
-        domReady = true
-      } else {
-        console.log(`⏳ Canvas found but not visible (${canvasRect.width}x${canvasRect.height}), attempt ${attempts + 1}/${maxAttempts}`)
-      }
-    } else {
-      console.log(`⏳ Canvas not found, attempt ${attempts + 1}/${maxAttempts}`)
-    }
-
-    attempts++
-  }
-
-  if (!domReady) {
-    const canvasInfo = chartCanvas.value ? {
-      exists: true,
-      rect: chartCanvas.value.getBoundingClientRect(),
-      parentExists: !!chartCanvas.value.parentElement,
-      parentRect: chartCanvas.value.parentElement?.getBoundingClientRect()
-    } : { exists: false }
-
-    console.error('❌ Canvas element debug info:', canvasInfo)
-    throw new Error(`Canvas element not ready after ${maxAttempts} attempts. Canvas info: ${JSON.stringify(canvasInfo)}`)
-  }
-
-  setupChartInitialization()
-}
-
-async function waitForChartRequirementsAlternative() {
-  console.log('⏳ Waiting for chart requirements (MutationObserver approach)...')
-
-  return new Promise((resolve, reject) => {
-    let timeoutId
-    let observer
-
-    timeoutId = setTimeout(() => {
-      if (observer) observer.disconnect()
-      reject(new Error('Canvas element not found within timeout period'))
-    }, 8000) // 8 second timeout
-
-    const checkCanvas = () => {
-      if (chartCanvas.value) {
-        const rect = chartCanvas.value.getBoundingClientRect()
-        if (rect.width > 0 && rect.height > 0) {
-          console.log('✅ Canvas element ready (alternative method)')
-          clearTimeout(timeoutId)
-          if (observer) observer.disconnect()
-          setupChartInitialization()
-          resolve()
-          return true
-        }
-      }
-      return false
-    }
-
-    // Check immediately
-    if (checkCanvas()) return
-
-    // Setup mutation observer to watch for DOM changes
-    observer = new MutationObserver((mutations) => {
-      checkCanvas()
-    })
-
-    // Observe the parent container for changes
-    const container = document.querySelector(`[data-id="${props.widgetId}"]`)
-    if (container) {
-      observer.observe(container, {
-        childList: true,
-        subtree: true,
-        attributes: true,
-        attributeFilter: ['style', 'class']
-      })
-    }
-
-    // Also check periodically
-    const intervalId = setInterval(() => {
-      if (checkCanvas()) {
-        clearInterval(intervalId)
-      }
-    }, 200)
-
-    // Cleanup interval on timeout
-    setTimeout(() => clearInterval(intervalId), 8000)
-  })
-}
-
-function setupChartInitialization() {
-  console.log('📋 Setting up chart initialization watcher...')
-
-  // Watch for data availability and initialize chart
+function setupChartWatcher() {
+  // Watch for when we have data and canvas available
   const stopWatcher = watch(
     [hasData, chartData, () => chartCanvas.value],
     async ([hasDataNow, chartDataNow, canvasNow]) => {
-      console.log('📊 Chart initialization check:', {
+      console.log('📊 Chart watcher triggered:', {
         hasData: hasDataNow,
         hasChartData: !!chartDataNow,
         isEmpty: chartDataNow?.isEmpty,
@@ -513,6 +369,7 @@ function setupChartInitialization() {
           await initializeChart()
           isChartReady.value = true
           stopWatcher() // Stop watching once chart is initialized
+          emit('chart-ready', chartInstance.value)
           console.log('✅ Chart initialization complete')
         } catch (err) {
           console.error('❌ Chart initialization failed:', err)
@@ -660,7 +517,7 @@ async function updateChartData(newData) {
 
 // Watch for chart data changes and update chart
 watch(chartData, async (newData) => {
-  if (newData && chartInstance.value) {
+  if (newData && chartInstance.value && !newData.isEmpty) {
     await updateChartData(newData)
     emit('data-updated', newData)
   }
@@ -675,7 +532,7 @@ async function handleManualRefresh() {
 
   try {
     // Call the correct refresh function from useWidgetData
-    await refresh()
+    await refresh(true) // Force refresh
     console.log('✅ Manual refresh completed successfully')
   } catch (err) {
     console.error('❌ Manual refresh failed:', err)
@@ -756,7 +613,7 @@ defineExpose({
   resetZoom,
   zoomIn,
   zoomOut,
-  refresh: handleManualRefresh, // Expose the correct refresh function
+  refresh: handleManualRefresh,
   rawData,
   chartData,
   metadata,
@@ -903,6 +760,7 @@ defineExpose({
   background: #f8f9fa;
   border-top: 1px solid #e9ecef;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 /* Background Refresh Indicator */
@@ -927,6 +785,7 @@ defineExpose({
   border: 1px solid #e9ecef;
   border-radius: 4px;
   padding: 8px;
+  flex-shrink: 0;
 }
 
 .debug-content {

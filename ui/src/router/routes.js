@@ -9,6 +9,9 @@ import MetadataMappingPage from 'pages/MetadataMappingPage.vue'
 import TestPage from 'pages/TestPage.vue'
 // import TestWidget from 'pages/TestWidgetDataPage.vue'
 import zoomtest from 'pages/ZoomableChartTestPage.vue'
+import widget_test from 'pages/WidgetIntegrationTestPage.vue'
+import widget_test_simple from 'pages/TestwidgetSimple.vue'
+
 const routes = [
   {
     path: '/',
@@ -47,6 +50,22 @@ const routes = [
         component: TestPage,
         meta: {
           title: 'Testing Phase 6.3',
+          icon: 'bug_report'
+        }
+      },
+      {
+        path: '/widget-integration-test',
+        component: widget_test,
+        meta: {
+          title: 'Phase 6.3.5: Widget Integration Fix ',
+          icon: 'bug_report'
+        }
+      },
+            {
+        path: '/widget-simple-test',
+        component: widget_test_simple,
+        meta: {
+          title: 'Phase 6.3.5: Widget Integration Fix ',
           icon: 'bug_report'
         }
       },
