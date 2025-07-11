@@ -49,24 +49,45 @@
     </q-header>
 
     <!-- DRAWER -->
-    <q-drawer show-if-above v-model="leftDrawerOpen" side="left" bordered>
-      <q-list>
-        <q-item clickable v-ripple @click="openDialog">
-          <q-item-section avatar>
-            <q-icon name="add" />
-          </q-item-section>
-          <q-item-section>Add Page</q-item-section>
-        </q-item>
+<q-drawer show-if-above v-model="leftDrawerOpen" side="left" bordered>
+  <q-list>
 
-        <q-item v-for="page in pageStore.pages" :key="page.page_id" :to="page.page_route" clickable>
-          <q-item-section>{{ page.page_name }}</q-item-section>
-          <q-item-section side>
-            <q-btn dense flat icon="edit" @click.stop="openRenameDialog(page)" />
-            <q-btn dense flat icon="delete" color="red" @click.stop="deletePage(page.page_id)" />
-          </q-item-section>
-        </q-item>
-      </q-list>
-    </q-drawer>
+    <!-- Static Routes -->
+    <q-item clickable v-ripple to="metadata-mapping">
+      <q-item-section avatar>
+
+        <q-icon name="rule_folder" />
+      </q-item-section>
+      <q-item-section>Metadata Builder</q-item-section>
+    </q-item>
+
+    <q-item clickable v-ripple to="datasources">
+      <q-item-section avatar>
+        <q-icon name="storage" />
+      </q-item-section>
+      <q-item-section>Data Sources</q-item-section>
+    </q-item>
+
+    <!-- Add Page -->
+    <q-item clickable v-ripple @click="openDialog">
+      <q-item-section avatar>
+        <q-icon name="add" />
+      </q-item-section>
+      <q-item-section>Add Page</q-item-section>
+    </q-item>
+
+    <!-- Dynamic Pages -->
+    <q-item v-for="page in pageStore.pages" :key="page.page_id" :to="page.page_route" clickable>
+      <q-item-section>{{ page.page_name }}</q-item-section>
+      <q-item-section side>
+        <q-btn dense flat icon="edit" @click.stop="openRenameDialog(page)" />
+        <q-btn dense flat icon="delete" color="red" @click.stop="deletePage(page.page_id)" />
+      </q-item-section>
+    </q-item>
+
+  </q-list>
+</q-drawer>
+
 
     <!-- DIALOGS -->
     <add-page-dialog ref="addDialog" />

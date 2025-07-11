@@ -1,8 +1,7 @@
 <!--
-  File: src/pages/DynamicPage.vue - COMPLETE COMBINED VERSION
-  Purpose: Dashboard page with full functionality from OLD + enhanced refresh from NEW
-  Features: Layout management, widget CRUD, enhanced global time refresh, manual refresh
-  Combined: All functionality from DynamicPageOLD.vue + refresh improvements from DynamicPageNew.vue
+  File: src/pages/DynamicPageOLD.vue - COMPLETE FIXED VERSION
+  Purpose: Vue Component Integration with proper API compatibility
+  FIXES: WidgetBox integration, layout preservation, API compatibility
 -->
 
 <template>
@@ -32,25 +31,6 @@
     <div class="row items-center q-mb-lg">
       <div class="col">
         <GlobalTimePicker />
-      </div>
-    </div>
-
-    <!-- Enhanced Global Time Display Card (FROM NEW VERSION) -->
-    <div class="row q-mb-md">
-      <div class="col">
-        <q-card flat bordered class="time-display-card">
-          <q-card-section horizontal class="items-center">
-            <q-icon name="schedule" size="sm" class="q-mr-sm text-primary" />
-            <div class="text-body2">
-              <strong>Current Time Range:</strong> {{ timeRangeDisplay }}
-            </div>
-            <q-space />
-            <div v-if="refreshingWidgets" class="flex items-center">
-              <q-spinner color="primary" size="16px" class="q-mr-xs" />
-              <span class="text-caption text-primary">Refreshing widgets...</span>
-            </div>
-          </q-card-section>
-        </q-card>
       </div>
     </div>
 
@@ -124,8 +104,7 @@
           Remove all widgets
         </q-tooltip>
       </q-btn>
-
-      <!-- Enhanced Manual Refresh All (FROM NEW VERSION) -->
+      <!-- Manual Refresh All -->
       <q-btn
         icon="refresh"
         label="Refresh All"
@@ -172,25 +151,22 @@
           {{ backendStatus.connected ? 'Connected' : 'Disconnected' }}
         </q-chip>
       </div>
-    </div>
-
-    <!-- Grid Container with Loading Overlay (FROM NEW VERSION) -->
-    <div class="dashboard-container" :class="{ 'loading': loadingLayout }">
-      <!-- Loading Overlay -->
-      <div v-if="loadingLayout" class="loading-overlay">
-        <div class="text-center">
-          <q-spinner-cube color="primary" size="40px" />
-          <div class="q-mt-md text-body2">Loading widgets...</div>
+      <div class="col-auto">
+        <div class="text-caption text-grey-7">
+          Time Range: {{ timeRangeDisplay }}
         </div>
       </div>
+    </div>
 
+    <!-- ✨ FIXED: Vue Component Grid Container -->
+    <div class="dashboard-container">
       <!-- GridStack Container for Layout Management -->
       <div
         ref="gridContainer"
         class="grid-stack"
         style="min-height: 400px;"
       >
-        <!-- Vue Components for each widget with proper height calculation -->
+        <!-- ✨ FIXED: Vue Components for each widget with proper height calculation -->
         <div
           v-for="widget in widgets"
           :key="widget.id"
@@ -202,9 +178,8 @@
           :gs-h="widget.h"
         >
           <div class="grid-stack-item-content">
-            <!-- WidgetBox component with all event handlers -->
+            <!-- ✨ FIXED: Use WidgetBox component with proper props -->
             <WidgetBox
-              :ref="el => widgetRefs[widget.id] = el"
               :widget-data="widgetDataMap[widget.id] || widget"
               :height="calculateWidgetHeight(widget)"
               theme="default"
@@ -228,7 +203,7 @@
 
       <!-- Empty State -->
       <div
-        v-if="widgets.length === 0 && !loadingLayout"
+        v-if="widgets.length === 0"
         class="empty-state text-center q-pa-xl"
       >
         <q-icon name="dashboard" size="80px" color="grey-4" />
@@ -273,10 +248,6 @@
                 <div class="text-subtitle2">Widget Data</div>
                 <pre class="debug-json">{{ JSON.stringify(widgetDataMap, null, 2) }}</pre>
               </div>
-              <div class="col">
-                <div class="text-subtitle2">Widget Refs</div>
-                <pre class="debug-json">{{ JSON.stringify(Object.keys(widgetRefs), null, 2) }}</pre>
-              </div>
             </div>
           </q-card-section>
         </q-card>
@@ -297,7 +268,7 @@ import GlobalTimePicker from 'src/components/GlobalTimePicker.vue'
 import WidgetWizard from 'src/components/WidgetWizard.vue'
 import WidgetBox from 'src/components/WidgetBox.vue'
 
-// Import services
+// Import services - FIXED imports
 import { api } from 'src/boot/axios.js'
 import { useGlobalTime } from 'src/composables/useGlobalTime.js'
 
@@ -310,9 +281,6 @@ const $q = useQuasar()
 const gridContainer = ref(null)
 const grid = ref(null)
 const widgetWizardRef = ref(null)
-
-// Enhanced widget references tracking (FROM NEW VERSION)
-const widgetRefs = ref({})
 
 // Page management
 const pageTitle = computed(() => {
@@ -330,7 +298,6 @@ const widgetDataMap = ref({})
 // Loading States
 const savingLayout = ref(false)
 const loadingLayout = ref(false)
-const refreshingWidgets = ref(false) // Enhanced refresh state (FROM NEW VERSION)
 
 // Layout tracking
 const lastSaved = ref(null)
@@ -359,110 +326,15 @@ const isDevelopment = computed(() => {
   return process.env.NODE_ENV === 'development' || process.env.DEV
 })
 
-// ==================== ENHANCED GLOBAL TIME INTEGRATION (FROM NEW VERSION) ====================
+// ==================== GLOBAL TIME INTEGRATION ====================
 
-// Global time management with proper reactivity
-const globalTime = useGlobalTime()
-const { timeRangeDisplay, timeState } = globalTime
+const { timeRangeDisplay } = useGlobalTime()
 
-/**
- * Enhanced global time change handler (FROM NEW VERSION)
- * Handle global time changes by refreshing all widgets
- */
-function handleTimeChange(event) {
-  console.log('⏰ Global time changed, refreshing all widgets...', event?.detail || 'manual trigger')
-  refreshAllWidgets()
+function handleTimeChange() {
+  console.log('⏰ Global time changed, refreshing widgets...')
+  // Note: WidgetBox components will automatically refresh via useGlobalTime composable
 }
 
-/**
- * Enhanced refresh all widgets functionality (FROM NEW VERSION)
- * Refresh all widgets data with proper loading states and widget reference tracking
- */
-async function refreshAllWidgets() {
-  if (refreshingWidgets.value) {
-    console.log('🔄 Refresh already in progress, skipping...')
-    return
-  }
-
-  try {
-    refreshingWidgets.value = true
-    console.log('🔄 Starting refresh of all widgets...')
-
-    // Get current time range from global state
-    const currentTimeRange = globalTime.currentTimeRange.value
-    console.log('📅 Using time range:', currentTimeRange)
-
-    if (!currentTimeRange.start || !currentTimeRange.end) {
-      console.warn('⚠️ Invalid time range, skipping refresh')
-      return
-    }
-
-    // Refresh each widget by calling their refresh method
-    const refreshPromises = widgets.value.map(async (widget) => {
-      try {
-        const widgetRef = widgetRefs.value[widget.id]
-        if (widgetRef && typeof widgetRef.refresh === 'function') {
-          console.log(`🔄 Refreshing widget: ${widget.id} (${widget.widget_label})`)
-          await widgetRef.refresh()
-          console.log(`✅ Widget refreshed: ${widget.id}`)
-        } else {
-          console.warn(`⚠️ Widget ref not found or no refresh method: ${widget.id}`)
-        }
-      } catch (error) {
-        console.error(`❌ Failed to refresh widget ${widget.id}:`, error)
-      }
-    })
-
-    // Wait for all widgets to refresh
-    await Promise.all(refreshPromises)
-
-    console.log('✅ All widgets refreshed successfully')
-
-    $q.notify({
-      type: 'positive',
-      message: `Refreshed ${widgets.value.length} widget(s)`,
-      timeout: 2000
-    })
-
-  } catch (error) {
-    console.error('❌ Failed to refresh widgets:', error)
-    $q.notify({
-      type: 'negative',
-      message: 'Failed to refresh widgets',
-      timeout: 3000
-    })
-  } finally {
-    refreshingWidgets.value = false
-  }
-}
-
-/**
- * Enhanced time state watcher (FROM NEW VERSION)
- * Watch for global time state changes and trigger refresh
- */
-watch(
-  () => [timeState.timeStart, timeState.timeEnd, timeState.rangeType],
-  (newValues, oldValues) => {
-    const [newStart, newEnd, newRangeType] = newValues
-    const [oldStart, oldEnd, oldRangeType] = oldValues
-
-    // Only refresh if time range actually changed and we have widgets
-    if (widgets.value.length > 0 &&
-        (newStart !== oldStart || newEnd !== oldEnd || newRangeType !== oldRangeType)) {
-      console.log('📅 Time range changed:', {
-        from: { start: oldStart, end: oldEnd, type: oldRangeType },
-        to: { start: newStart, end: newEnd, type: newRangeType }
-      })
-
-      // Debounce rapid changes
-      clearTimeout(refreshAllWidgets.timerId)
-      refreshAllWidgets.timerId = setTimeout(() => {
-        handleTimeChange({ detail: 'watcher' })
-      }, 500)
-    }
-  },
-  { deep: true }
-)
 
 // ==================== UTILITY FUNCTIONS ====================
 
@@ -473,24 +345,6 @@ function calculateWidgetHeight(widget) {
   const heightInGridUnits = widget.h || 3
   const totalHeight = heightInGridUnits * (gridState.cellHeight + gridState.margin) - gridState.margin
   return `${Math.max(200, totalHeight)}px`
-}
-
-/**
- * Format time display
- */
-function formatTime(date) {
-  if (!date) return 'Never'
-
-  const now = new Date()
-  const diffMs = now - date
-  const diffMin = Math.floor(diffMs / 60000)
-  const diffHour = Math.floor(diffMs / 3600000)
-
-  if (diffMin < 1) return 'Just now'
-  if (diffMin < 60) return `${diffMin}m ago`
-  if (diffHour < 24) return `${diffHour}h ago`
-
-  return date.toLocaleDateString()
 }
 
 // ==================== LIFECYCLE ====================
@@ -522,7 +376,6 @@ onMounted(async () => {
   await checkBackendStatus()
   await loadLayout()
 
-  // Enhanced: Add proper event listeners for global time changes
   window.addEventListener('globalTimeChanged', handleTimeChange)
 
   console.log('✅ DynamicPage initialization complete')
@@ -535,13 +388,7 @@ onUnmounted(() => {
     grid.value.destroy()
   }
 
-  // Enhanced: Remove event listeners properly
   window.removeEventListener('globalTimeChanged', handleTimeChange)
-
-  // Clear any pending refresh timers
-  if (refreshAllWidgets.timerId) {
-    clearTimeout(refreshAllWidgets.timerId)
-  }
 })
 
 // ==================== WATCHERS ====================
@@ -617,7 +464,6 @@ function handleWidgetRemoved(event, items) {
 
     widgets.value = widgets.value.filter(w => w.id !== widgetId)
     delete widgetDataMap.value[widgetId]
-    delete widgetRefs.value[widgetId] // Enhanced: Clean up widget reference
 
     hasUnsavedChanges.value = true
   })
@@ -665,11 +511,11 @@ function addSimpleWidget() {
 
   const simpleWidget = {
     widget_id: id,
-    widget_type: 'line_chart',
+    widget_type: 'line_chart', // FIXED: Changed from 'simple' to 'line_chart' for testing
     widget_label: `Test Line Chart ${widgets.value.length + 1}`,
-    equipment_ids: [1],
-    signal_ids: [1],
-    filter_selections: {'1_n_bank': '1', '1_dcu': '1'},
+    equipment_ids: [1], // FIXED: Added test equipment ID
+    signal_ids: [1], // FIXED: Added test signal ID
+    filter_selections: {'1_n_bank': '1', '1_dcu': '1'}, // FIXED: Added test filters
     position_data: {
       x: 0,
       y: 0,
@@ -689,9 +535,7 @@ function addSimpleWidget() {
   console.log('🧪 Test line chart widget added:', simpleWidget)
 }
 
-/**
- * Enhanced addWidgetToGrid with widget reference tracking (COMBINED APPROACH)
- */
+// ✨ ENHANCED: Simplified addWidgetToGrid - No more HTML generation
 function addWidgetToGrid(widgetData) {
   if (!grid.value || !gridState.initialized) {
     console.error('❌ Grid not initialized')
@@ -745,7 +589,6 @@ function removeWidget(widgetId) {
 
     widgets.value = widgets.value.filter(w => w.id !== widgetId)
     delete widgetDataMap.value[widgetId]
-    delete widgetRefs.value[widgetId] // Enhanced: Clean up widget reference
 
     hasUnsavedChanges.value = true
 
@@ -768,7 +611,6 @@ function clearAllWidgets() {
       grid.value.removeAll()
       widgets.value = []
       widgetDataMap.value = {}
-      widgetRefs.value = {} // Enhanced: Clear all widget references
       hasUnsavedChanges.value = true
 
       $q.notify({
@@ -825,11 +667,7 @@ function handleWidgetRefresh(widgetData) {
   const widgetId = widgetData?.widget_id
   console.log('🔄 Widget refresh requested:', widgetId)
 
-  // Enhanced: Use widget reference for individual refresh
-  const widgetRef = widgetRefs.value[widgetId]
-  if (widgetRef && typeof widgetRef.refresh === 'function') {
-    widgetRef.refresh()
-  }
+  // The individual widget will handle its own refresh via useWidgetData
 }
 
 function handleWidgetEdit(widgetData) {
@@ -986,7 +824,6 @@ async function loadLayout() {
       grid.value.removeAll()
       widgets.value = []
       widgetDataMap.value = {}
-      widgetRefs.value = {} // Enhanced: Clear widget references
     }
 
     const widgetsArray = layoutData.widgets || []
@@ -1074,11 +911,24 @@ async function checkBackendStatus() {
     console.warn('💛 Backend connection: Failed', error.message)
   }
 }
+
+function formatTime(date) {
+  if (!date) return 'Never'
+
+  const now = new Date()
+  const diffMs = now - date
+  const diffMin = Math.floor(diffMs / 60000)
+  const diffHour = Math.floor(diffMs / 3600000)
+
+  if (diffMin < 1) return 'Just now'
+  if (diffMin < 60) return `${diffMin}m ago`
+  if (diffHour < 24) return `${diffHour}h ago`
+
+  return date.toLocaleDateString()
+}
 </script>
 
 <style scoped>
-/* ==================== MAIN LAYOUT ==================== */
-
 .dashboard-container {
   min-height: 400px;
   position: relative;
@@ -1107,13 +957,6 @@ async function checkBackendStatus() {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
 }
 
-/* Enhanced Time Display Card (FROM NEW VERSION) */
-.time-display-card {
-  border-left: 4px solid #2196f3;
-  background: linear-gradient(90deg, #f8f9ff 0%, #ffffff 100%);
-}
-
-/* Empty State */
 .empty-state {
   background: white;
   border-radius: 8px;
@@ -1125,21 +968,6 @@ async function checkBackendStatus() {
   align-items: center;
 }
 
-/* Loading Overlay (FROM NEW VERSION) */
-.loading-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(255, 255, 255, 0.8);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-/* Debug Panel */
 .debug-panel {
   border-top: 1px solid #e0e0e0;
   margin-top: 24px;
@@ -1168,7 +996,7 @@ async function checkBackendStatus() {
   }
 }
 
-/* Widget Loading States */
+/* Loading States */
 .widget-loading {
   display: flex;
   align-items: center;
@@ -1264,6 +1092,66 @@ async function checkBackendStatus() {
   transition: all 0.2s ease;
 }
 
+/* Loading Overlay */
+.loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+/* Debug Panel Styling */
+.debug-panel .q-expansion-item {
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+}
+
+.debug-panel .debug-json {
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+/* Custom Scrollbar for Debug */
+.debug-json::-webkit-scrollbar {
+  width: 6px;
+}
+
+.debug-json::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+.debug-json::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 3px;
+}
+
+.debug-json::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+/* Header Enhancements */
+.page-header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-radius: 8px;
+  padding: 24px;
+  margin-bottom: 24px;
+}
+
+.page-header .text-h4 {
+  color: white;
+}
+
+.page-header .text-subtitle2 {
+  color: rgba(255, 255, 255, 0.8);
+}
+
 /* Widget Type Specific Styling */
 :deep(.widget-box--line_chart) {
   border-left: 4px solid #2196f3;
@@ -1298,9 +1186,25 @@ async function checkBackendStatus() {
   color: #ff9800;
 }
 
-/* Enhanced Refresh Animation (FROM NEW VERSION) */
-.refreshing-widgets {
-  animation: pulse 2s infinite;
+/* Tooltip Enhancements */
+.q-tooltip {
+  font-size: 12px;
+  padding: 6px 8px;
+}
+
+/* Button Group Styling */
+.q-btn-group .q-btn {
+  border-radius: 0;
+}
+
+.q-btn-group .q-btn:first-child {
+  border-top-left-radius: 4px;
+  border-bottom-left-radius: 4px;
+}
+
+.q-btn-group .q-btn:last-child {
+  border-top-right-radius: 4px;
+  border-bottom-right-radius: 4px;
 }
 
 /* Widget Animation on Add */
