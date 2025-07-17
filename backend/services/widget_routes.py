@@ -11,6 +11,13 @@ import services.meta_crud as meta_crud
 from fastapi_utils.cbv import cbv
 from fastapi_utils.inferring_router import InferringRouter
 from config import get_db
+from services.data_retrieval_service import DataRetrievalService
+from services.query_generation_service import QueryGenerationService
+from services.page_crud import get_page_by_id
+import traceback
+
+from services.query_generation_service import QueryGenerationService
+from config import calculate_optimal_window_period,WINDOW_PERIOD_OPTIONS, MAX_POINTS_PER_WIDGET
 
 widget_router = InferringRouter()
 
@@ -96,7 +103,6 @@ class WidgetRoutes:
     def create_widget(self, widget: WidgetCreate):
         """Create a new widget with metadata"""
         # Validate page exists
-        from services.page_crud import get_page_by_id
         page = get_page_by_id(self.db, widget.page_id)
         if not page:
             raise HTTPException(status_code=404, detail="Page not found")
@@ -190,7 +196,6 @@ class PageTimeRoutes:
     def create_or_update_time_settings(self, page_id: str, settings: PageTimeSettingsCreate):
         """Create or update page time settings"""
         # Validate page exists
-        from services.page_crud import get_page_by_id
         page = get_page_by_id(self.db, page_id)
         if not page:
             raise HTTPException(status_code=404, detail="Page not found")
@@ -228,7 +233,6 @@ class LayoutRoutes:
     def save_complete_layout(self, page_id: str, layout_data: PageLayoutData):
         """Save complete page layout with widgets and time settings"""
         # Validate page exists
-        from services.page_crud import get_page_by_id
         page = get_page_by_id(self.db, page_id)
         if not page:
             raise HTTPException(status_code=404, detail="Page not found")
@@ -251,7 +255,6 @@ class LayoutRoutes:
         """Get complete page layout with widgets and time settings - FIXED"""
         try:
             # Validate page exists first
-            from services.page_crud import get_page_by_id
             page = get_page_by_id(self.db, page_id)
             if not page:
                 raise HTTPException(status_code=404, detail="Page not found")
@@ -279,9 +282,8 @@ class LayoutRoutes:
             
         except Exception as e:
             # Log the error for debugging
-            print(f"❌ Error in get_complete_layout: {str(e)}")
-            print(f"❌ Error type: {type(e)}")
-            import traceback
+            print(f"Error in get_complete_layout: {str(e)}")
+            print(f"Error type: {type(e)}")
             traceback.print_exc()
             
             # Return 500 with detailed error
@@ -400,8 +402,7 @@ class WidgetDataRoutes:
     @widget_router.post("/{widget_id}/data")
     def get_widget_data(self, widget_id: str, time_request: WidgetDataRequest, connection_id: Optional[str] = None):
         """Get data for a specific widget with window period support"""
-        from services.data_retrieval_service import DataRetrievalService
-        from services.query_generation_service import QueryGenerationService
+
         
         time_range = {
             "start": time_request.time_start,
@@ -426,7 +427,6 @@ class WidgetDataRoutes:
     @widget_router.post("/pages/{page_id}/widgets/data-bulk")
     def get_bulk_widget_data(self, page_id: str, time_request: WidgetDataRequest, connection_id: Optional[str] = None):
         """Get data for all widgets on a page with window period support"""
-        from services.data_retrieval_service import DataRetrievalService
         
         # Validate time range
         time_range = {
@@ -448,9 +448,7 @@ class WidgetDataRoutes:
 
     @widget_router.get("/data-sources/status")
     def get_data_source_status(self, connection_id: Optional[str] = None):
-        """Get status of data source connections"""
-        from services.data_retrieval_service import DataRetrievalService
-        
+        """Get status of data source connections"""        
         status = DataRetrievalService.get_data_source_status(self.db, connection_id)
         return status
 
@@ -464,8 +462,7 @@ class TimeRangeRoutes:
     @widget_router.get("/time-ranges/presets")
     def get_time_range_presets(self):
         """Get predefined time range options and window periods for UI"""
-        from services.query_generation_service import QueryGenerationService
-        from config import WINDOW_PERIOD_OPTIONS, MAX_POINTS_PER_WIDGET
+
         
         presets = QueryGenerationService.generate_sample_time_ranges()
         
@@ -512,16 +509,13 @@ class TimeRangeRoutes:
 
     @widget_router.post("/time-ranges/calculate")
     def calculate_time_range(self, range_type: str, custom_start: Optional[str] = None, custom_end: Optional[str] = None):
-        """Calculate time range based on type"""
-        from services.query_generation_service import QueryGenerationService
-        
+        """Calculate time range based on type"""        
         time_range = QueryGenerationService.calculate_time_range(range_type, custom_start, custom_end)
         return time_range
 
     @widget_router.post("/window-period/calculate")
     def calculate_optimal_window_period(self, time_start: str, time_end: str, max_points: Optional[int] = None):
         """Calculate optimal window period for given time range"""
-        from config import calculate_optimal_window_period, MAX_POINTS_PER_WIDGET
         
         if max_points is None:
             max_points = MAX_POINTS_PER_WIDGET

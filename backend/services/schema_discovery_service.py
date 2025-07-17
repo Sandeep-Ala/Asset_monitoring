@@ -8,6 +8,7 @@ from typing import List, Dict, Tuple, Optional, Set
 from sqlalchemy.orm import Session
 import services.datasource_crud as crud
 from collections import defaultdict
+import pyarrow.parquet as pq
 
 class SchemaDiscoveryService:
     """Service to discover database schema for different database types"""
@@ -215,7 +216,6 @@ class SchemaDiscoveryService:
                     sample_file = files[0]
                     try:
                         # Try pyarrow first for better performance
-                        import pyarrow.parquet as pq
                         parquet_file = pq.ParquetFile(sample_file)
                         column_count = len(parquet_file.schema_arrow)
                     except Exception:

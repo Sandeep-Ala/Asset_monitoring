@@ -6,7 +6,13 @@ from typing import Dict, List, Tuple, Optional, Any
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 import json
-
+import duckdb
+import sqlite3
+from services.widget_crud import get_widget_by_id, widget_to_dict
+from services.query_generation_service import QueryGenerationService
+import services.datasource_crud as datasource_crud
+from models.meta_models import EquipmentSignal
+from config import get_db
 class DataRetrievalService:
     """
     Optimized service for widget data retrieval with Chart.js compatible timestamps
@@ -86,7 +92,7 @@ class DataRetrievalService:
             
             # Add debug info for first few timestamps
             if len(labels) > 0:
-                print(f"✅ Chart data formatted with ISO timestamps:")
+                print(f" Chart data formatted with ISO timestamps:")
                 print(f"   - Total points: {len(labels)}")
                 print(f"   - First timestamp: {labels[0]}")
                 print(f"   - Last timestamp: {labels[-1]}")
@@ -95,7 +101,7 @@ class DataRetrievalService:
             return result
             
         except Exception as e:
-            print(f"❌ Error formatting chart data: {str(e)}")
+            print(f" Error formatting chart data: {str(e)}")
             return {
                 "labels": [],
                 "datasets": [],
@@ -223,8 +229,7 @@ class DataRetrievalService:
         Get signal metadata from database - optimized with minimal logging
         """
         try:
-            from models.meta_models import EquipmentSignal
-            from config import get_db
+
             
             signal_metadata = []
             db = next(get_db())
@@ -358,7 +363,6 @@ class DataRetrievalService:
     def _execute_parquet_query(query: str, connection_config: Dict) -> Tuple[bool, List[Dict], str]:
         """Execute DuckDB query against Parquet files"""
         try:
-            import duckdb
             conn = duckdb.connect()
             result = conn.execute(query).fetchdf()
             data_rows = result.to_dict('records')
@@ -370,7 +374,6 @@ class DataRetrievalService:
     def _execute_sqlite_query(query: str, connection_config: Dict) -> Tuple[bool, List[Dict], str]:
         """Execute SQLite query"""
         try:
-            import sqlite3
             
             db_path = connection_config.get('db_path', '')
             if not db_path:
@@ -395,8 +398,7 @@ class DataRetrievalService:
         Complete widget data retrieval pipeline with Chart.js optimized timestamps
         """
         try:
-            from services.widget_crud import get_widget_by_id, widget_to_dict
-            from services.query_generation_service import QueryGenerationService
+
             
             # Get widget configuration
             widget = get_widget_by_id(db, widget_id)
@@ -473,7 +475,7 @@ class DataRetrievalService:
     def get_data_source_status(db: Session, connection_id: str = None) -> Dict[str, Any]:
         """Get status of data source connection"""
         try:
-            import services.datasource_crud as datasource_crud
+
             
             if connection_id:
                 connection = datasource_crud.get_data_connection_by_id(db, connection_id)

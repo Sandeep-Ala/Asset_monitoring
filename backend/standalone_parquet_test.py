@@ -10,6 +10,8 @@ import glob
 import pandas as pd
 from typing import Dict, Tuple, List, Set, Optional
 from collections import defaultdict
+import pyarrow.parquet as pq
+import pyarrow
 
 class FixedConnectionTestService:
     """Fixed version of connection test service"""
@@ -41,7 +43,6 @@ class FixedConnectionTestService:
                 
                 # FIXED: Use pyarrow for schema reading first (faster and more compatible)
                 try:
-                    import pyarrow.parquet as pq
                     parquet_file = pq.ParquetFile(sample_file)
                     schema = parquet_file.schema_arrow
                     column_count = len(schema)
@@ -56,8 +57,6 @@ class FixedConnectionTestService:
                     
                     return True, f"Parquet connection successful. Found {len(parquet_files)} parquet files with {len(df_sample.columns)} columns in sample file."
                     
-            except ImportError:
-                return False, "pandas library not installed. Required for Parquet support."
             except Exception as e:
                 return False, f"Failed to read parquet file: {str(e)}"
             
@@ -162,7 +161,6 @@ class FixedSchemaDiscoveryService:
                     sample_file = files[0]
                     try:
                         # Try pyarrow first for better performance
-                        import pyarrow.parquet as pq
                         parquet_file = pq.ParquetFile(sample_file)
                         column_count = len(parquet_file.schema_arrow)
                     except Exception:
@@ -457,7 +455,7 @@ class FixedSchemaDiscoveryService:
 
 def test_fixed_parquet_implementation():
     """Test the fixed parquet implementation"""
-    print("🧪 Testing FIXED Parquet Implementation")
+    print(" Testing FIXED Parquet Implementation")
     print("=" * 50)
     
     # Test configuration
@@ -465,37 +463,37 @@ def test_fixed_parquet_implementation():
         "base_path": r"D:\Asset Monitoring System\Data-Backup\site=UK_Tollgate"
     }
     
-    print(f"📁 Testing with base path: {test_config['base_path']}")
+    print(f" Testing with base path: {test_config['base_path']}")
     
     # Test 1: Connection Testing
-    print("\n1️⃣ Testing Fixed Parquet Connection...")
+    print("\n1️ Testing Fixed Parquet Connection...")
     success, message = FixedConnectionTestService.test_parquet_connection(test_config)
-    print(f"   Result: {'✅ SUCCESS' if success else '❌ FAILED'}")
+    print(f"   Result: {' SUCCESS' if success else ' FAILED'}")
     print(f"   Message: {message}")
     
     if not success:
-        print("\n❌ Connection test failed. Check your base path and parquet files.")
+        print("\n Connection test failed. Check your base path and parquet files.")
         return False
     
     # Test 2: Structure Analysis
-    print("\n2️⃣ Testing Fixed Structure Analysis...")
+    print("\n Testing Fixed Structure Analysis...")
     success, structure_info, message = FixedConnectionTestService.get_parquet_structure_info(test_config)
-    print(f"   Result: {'✅ SUCCESS' if success else '❌ FAILED'}")
+    print(f"   Result: {' SUCCESS' if success else ' FAILED'}")
     print(f"   Message: {message}")
     
     if success:
-        print(f"   📊 Found {structure_info['total_files']} parquet files")
-        print(f"   🏭 Equipment types: {structure_info['equipment_types']}")
-        print(f"   🔢 DCU values: {structure_info['dcu_values']}")
+        print(f"    Found {structure_info['total_files']} parquet files")
+        print(f"    Equipment types: {structure_info['equipment_types']}")
+        print(f"    DCU values: {structure_info['dcu_values']}")
     
     # Test 3: Tables Discovery
-    print("\n3️⃣ Testing Fixed Tables Discovery...")
+    print("\n3 Testing Fixed Tables Discovery...")
     success, tables, message = FixedSchemaDiscoveryService.get_parquet_tables(test_config)
-    print(f"   Result: {'✅ SUCCESS' if success else '❌ FAILED'}")
+    print(f"   Result: {' SUCCESS' if success else ' FAILED'}")
     print(f"   Message: {message}")
     
     if success:
-        print(f"   📋 Found {len(tables)} equipment tables:")
+        print(f"    Found {len(tables)} equipment tables:")
         for table in tables[:5]:  # Show first 5
             print(f"      - {table['name']}: {table['row_count']} rows, {table['file_count']} files")
         if len(tables) > 5:
@@ -503,34 +501,32 @@ def test_fixed_parquet_implementation():
     
     # Test 4: Columns Discovery for first table
     if success and tables:
-        print("\n4️⃣ Testing Fixed Columns Discovery...")
+        print("\n Testing Fixed Columns Discovery...")
         first_table = tables[0]['name']
         success, columns, message = FixedSchemaDiscoveryService.get_parquet_columns(test_config, first_table, quick_mode=True)
-        print(f"   Result: {'✅ SUCCESS' if success else '❌ FAILED'}")
+        print(f"   Result: {' SUCCESS' if success else ' FAILED'}")
         print(f"   Message: {message}")
         
         if success:
             partition_cols = [col for col in columns if col.get('is_partition', False)]
             parquet_cols = [col for col in columns if not col.get('is_partition', False)]
             
-            print(f"   🏷️  Partition columns ({len(partition_cols)}):")
+            print(f"     Partition columns ({len(partition_cols)}):")
             for col in partition_cols:
                 print(f"      - {col['name']}: {col['partition_values']}")
             
-            print(f"   📈 First 5 parquet columns (of {len(parquet_cols)}):")
+            print(f"    First 5 parquet columns (of {len(parquet_cols)}):")
             for col in parquet_cols[:5]:
                 print(f"      - {col['name']} ({col['data_type']}) → {col['suggested_for']}")
     
-    print("\n🎉 Fixed implementation test completed!")
+    print("\n Fixed implementation test completed!")
     return True
 
 if __name__ == "__main__":
-    print("🚀 Fixed Parquet Implementation Test")
+    print(" Fixed Parquet Implementation Test")
     print("=" * 50)
     
     try:
-        import pandas as pd
-        import pyarrow
         print(f"📦 pandas: {pd.__version__}")
         print(f"📦 pyarrow: {pyarrow.__version__}")
         
@@ -541,6 +537,5 @@ if __name__ == "__main__":
         print("2. Start the server: uvicorn main:app --reload --port 8000")
         print("3. Test frontend integration at /datasources")
         
-    except ImportError as e:
-        print(f"❌ Missing dependency: {e}")
-        print("Install with: pip install pandas pyarrow")
+    except Exception as e:
+        print(e)

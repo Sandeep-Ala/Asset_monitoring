@@ -5,6 +5,8 @@ from models.widget_models import Widget, PageTimeSettings
 from datetime import datetime
 from typing import List, Dict, Optional
 import json
+from services.page_crud import get_page_by_id
+import traceback
 
 # ---------- Widget CRUD Operations ----------
 
@@ -177,7 +179,6 @@ def time_settings_to_dict(settings: PageTimeSettings) -> Dict:
 
 def update_page_layout_data(db: Session, page_id: str, layout_data: Dict) -> bool:
     """Update page layout data with complete GridStack layout"""
-    from services.page_crud import get_page_by_id
     
     page = get_page_by_id(db, page_id)
     if page:
@@ -189,7 +190,6 @@ def update_page_layout_data(db: Session, page_id: str, layout_data: Dict) -> boo
 
 def get_page_layout_data(db: Session, page_id: str) -> Dict:
     """Get page layout data"""
-    from services.page_crud import get_page_by_id
     
     page = get_page_by_id(db, page_id)
     if page and page.layout_data:
@@ -205,40 +205,39 @@ def get_page_layout_data(db: Session, page_id: str) -> Dict:
 def get_complete_page_data(db: Session, page_id: str) -> Dict:
     """Get complete page data including widgets and time settings - FIXED"""
     try:
-        from services.page_crud import get_page_by_id
         
         # Get page
         page = get_page_by_id(db, page_id)
         if not page:
-            print(f"❌ Page not found: {page_id}")
+            print(f" Page not found: {page_id}")
             return None
         
-        print(f"✅ Page found: {page.page_id}")
+        print(f" Page found: {page.page_id}")
         
         # Get widgets with error handling
         try:
             widgets = get_widgets_by_page(db, page_id)
             widgets_dict = widgets_to_dict_list(widgets)
-            print(f"✅ Widgets loaded: {len(widgets_dict)} widgets")
+            print(f" Widgets loaded: {len(widgets_dict)} widgets")
         except Exception as e:
-            print(f"❌ Error loading widgets: {str(e)}")
+            print(f" Error loading widgets: {str(e)}")
             widgets_dict = []
         
         # Get time settings with error handling
         try:
             time_settings_obj = get_page_time_settings(db, page_id)
             time_settings = time_settings_to_dict(time_settings_obj)
-            print(f"✅ Time settings loaded: {time_settings is not None}")
+            print(f" Time settings loaded: {time_settings is not None}")
         except Exception as e:
-            print(f"❌ Error loading time settings: {str(e)}")
+            print(f" Error loading time settings: {str(e)}")
             time_settings = None
         
         # Get layout data with error handling
         try:
             layout_data = get_page_layout_data(db, page_id)
-            print(f"✅ Layout data loaded: {layout_data is not None}")
+            print(f" Layout data loaded: {layout_data is not None}")
         except Exception as e:
-            print(f"❌ Error loading layout data: {str(e)}")
+            print(f" Error loading layout data: {str(e)}")
             layout_data = {}
         
         # Ensure datetime objects are serializable
@@ -258,12 +257,11 @@ def get_complete_page_data(db: Session, page_id: str) -> Dict:
             "layout_data": layout_data
         }
         
-        print(f"✅ Complete page data assembled successfully")
+        print(f" Complete page data assembled successfully")
         return result
         
     except Exception as e:
-        print(f"❌ Error in get_complete_page_data: {str(e)}")
-        import traceback
+        print(f" Error in get_complete_page_data: {str(e)}")
         traceback.print_exc()
         return None
 
@@ -273,27 +271,26 @@ def get_complete_page_data(db: Session, page_id: str) -> Dict:
 def get_page_layout_data(db: Session, page_id: str) -> Dict:
     """Get page layout data - ENHANCED WITH ERROR HANDLING"""
     try:
-        from services.page_crud import get_page_by_id
         
         page = get_page_by_id(db, page_id)
         if not page:
-            print(f"❌ Page not found for layout data: {page_id}")
+            print(f" Page not found for layout data: {page_id}")
             return {}
         
         if not page.layout_data:
-            print(f"📝 No layout data found for page: {page_id}")
+            print(f" No layout data found for page: {page_id}")
             return {}
         
         try:
             layout_data = json.loads(page.layout_data)
-            print(f"✅ Layout data parsed successfully")
+            print(f" Layout data parsed successfully")
             return layout_data
         except json.JSONDecodeError as e:
-            print(f"❌ JSON decode error in layout data: {str(e)}")
+            print(f" JSON decode error in layout data: {str(e)}")
             return {}
             
     except Exception as e:
-        print(f"❌ Error getting page layout data: {str(e)}")
+        print(f" Error getting page layout data: {str(e)}")
         return {}
 
 
@@ -306,18 +303,18 @@ def widgets_to_dict_list(widgets: List[Widget]) -> List[Dict]:
                 widget_dict = widget_to_dict(widget)
                 if widget_dict:
                     result.append(widget_dict)
-                    print(f"✅ Widget converted: {widget.widget_id}")
+                    print(f" Widget converted: {widget.widget_id}")
                 else:
-                    print(f"⚠️ Widget conversion returned None: {widget.widget_id}")
+                    print(f" Widget conversion returned None: {widget.widget_id}")
             except Exception as e:
-                print(f"❌ Error converting widget {widget.widget_id}: {str(e)}")
+                print(f" Error converting widget {widget.widget_id}: {str(e)}")
                 continue
         
-        print(f"✅ Converted {len(result)} widgets to dict list")
+        print(f" Converted {len(result)} widgets to dict list")
         return result
         
     except Exception as e:
-        print(f"❌ Error in widgets_to_dict_list: {str(e)}")
+        print(f" Error in widgets_to_dict_list: {str(e)}")
         return []
 
 
@@ -350,11 +347,11 @@ def widget_to_dict(widget: Widget) -> Dict:
             "updated_at": widget.updated_at.isoformat() if widget.updated_at else None
         }
         
-        print(f"✅ Widget {widget.widget_id} converted to dict successfully")
+        print(f" Widget {widget.widget_id} converted to dict successfully")
         return result
         
     except Exception as e:
-        print(f"❌ Error converting widget to dict: {str(e)}")
+        print(f" Error converting widget to dict: {str(e)}")
         # Return a basic structure to prevent complete failure
         return {
             "widget_id": getattr(widget, 'widget_id', 'unknown'),

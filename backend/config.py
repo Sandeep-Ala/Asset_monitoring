@@ -8,6 +8,9 @@ from models.meta_models import Base
 from models.meta_models import Page, MasterModel, Equipment, EquipmentSpec, EquipmentSignal, EquipmentDoc, EquipmentFilter
 from models.datasource_models import DataConnection, ConnectionConfig
 from models.widget_models import Widget, PageTimeSettings  # New widget models
+import os
+from typing import Dict, List
+from datetime import datetime
 
 BASE_PARQUET_PATH = "D:\Asset Monitoring System\Data-Backup\site=UK_Tollgate"
 
@@ -27,8 +30,7 @@ def get_db():
         db.close()
 
 # Window Period Configuration
-import os
-from typing import Dict, List
+
 
 # Configurable points per widget (for testing different values)
 MAX_POINTS_PER_WIDGET = int(os.getenv('MAX_POINTS_PER_WIDGET', '99'))
@@ -56,7 +58,6 @@ def calculate_optimal_window_period(time_start: str, time_end: str, max_points: 
     
     Returns: (window_period_str, window_seconds, total_points)
     """
-    from datetime import datetime
     
     if max_points is None:
         max_points = MAX_POINTS_PER_WIDGET
@@ -110,14 +111,14 @@ def calculate_optimal_window_period(time_start: str, time_end: str, max_points: 
         print(f"Error calculating window period: {e}")
         return '1h', 3600, max_points
 
-# Database initialization status
-print("✅ Database initialized with all tables:")
-print("   - Pages (enhanced with layout_data)")
-print("   - Master Models, Equipment, Specs, Signals, Docs, Filters")
-print("   - Data Connections and Configs")
-print("   - Widgets and Page Time Settings (NEW)")
-print("📍 Database location:", SQLITE_URL)
-print("⚙️  Widget Configuration:")
-print(f"   - Max points per widget: {MAX_POINTS_PER_WIDGET}")
-print(f"   - Default window period: {DEFAULT_WINDOW_PERIOD}")
-print(f"   - Available window periods: {list(WINDOW_PERIOD_OPTIONS.keys())}")
+# # Database initialization status
+# print("✅ Database initialized with all tables:")
+# print("   - Pages (enhanced with layout_data)")
+# print("   - Master Models, Equipment, Specs, Signals, Docs, Filters")
+# print("   - Data Connections and Configs")
+# print("   - Widgets and Page Time Settings (NEW)")
+# print("📍 Database location:", SQLITE_URL)
+# print("⚙️  Widget Configuration:")
+# print(f"   - Max points per widget: {MAX_POINTS_PER_WIDGET}")
+# print(f"   - Default window period: {DEFAULT_WINDOW_PERIOD}")
+# print(f"   - Available window periods: {list(WINDOW_PERIOD_OPTIONS.keys())}")

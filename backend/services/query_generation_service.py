@@ -6,6 +6,9 @@ import services.meta_crud as meta_crud
 import services.datasource_crud as datasource_crud
 from datetime import datetime, timedelta
 import json
+from config import WINDOW_PERIOD_OPTIONS
+from config import calculate_optimal_window_period, MAX_POINTS_PER_WIDGET
+from datetime import datetime
 
 class QueryGenerationService:
     """
@@ -22,8 +25,6 @@ class QueryGenerationService:
         Returns: (success, query, data_source_type, connection_config, window_info)
         """
         try:
-            # Import here to avoid circular imports
-            from config import calculate_optimal_window_period, MAX_POINTS_PER_WIDGET
             
             # Extract widget metadata
             equipment_ids = widget_config.get('equipment_ids', [])
@@ -51,14 +52,12 @@ class QueryGenerationService:
                     "auto_calculated": True
                 }
             else:
-                from config import WINDOW_PERIOD_OPTIONS
                 window_seconds = WINDOW_PERIOD_OPTIONS.get(window_period, 3600)
                 
                 # Calculate estimated points
                 time_start = time_range.get('start', '')
                 time_end = time_range.get('end', '')
                 try:
-                    from datetime import datetime
                     start_dt = datetime.fromisoformat(time_start.replace('Z', '+00:00').replace('+00:00', ''))
                     end_dt = datetime.fromisoformat(time_end.replace('Z', '+00:00').replace('+00:00', ''))
                     total_seconds = (end_dt - start_dt).total_seconds()

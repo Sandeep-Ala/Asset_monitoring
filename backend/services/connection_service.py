@@ -6,7 +6,8 @@ import glob
 from typing import Dict, Tuple, List
 from sqlalchemy.orm import Session
 import services.datasource_crud as crud
-
+import pandas as pd
+import pyarrow.parquet as pq
 class ConnectionTestService:
     """Service to test different database connections"""
     
@@ -68,8 +69,6 @@ class ConnectionTestService:
             
             # Try to read schema from one file to validate it's a valid parquet
             try:
-                import pandas as pd
-                import pyarrow.parquet as pq
                 
                 sample_file = parquet_files[0]
                 
@@ -89,8 +88,6 @@ class ConnectionTestService:
                     
                     return True, f"Parquet connection successful. Found {len(parquet_files)} parquet files with {len(df_sample.columns)} columns in sample file."
                 
-            except ImportError:
-                return False, "pandas library not installed. Required for Parquet support."
             except Exception as e:
                 return False, f"Failed to read parquet file: {str(e)}"
             
