@@ -1,15 +1,33 @@
-# services/data_retrieval_service.py - OPTIMIZED WITH PROPER CHART.JS TIMESTAMPS
-# Sends ISO formatted timestamps that Chart.js can directly parse
+# services/data_retrieval_service.py - Updated with InfluxDB v2 Support
 
 import pandas as pd
 from typing import Dict, List, Tuple, Optional, Any
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 import json
+import duckdb
+import sqlite3
+from services.widget_crud import get_widget_by_id, widget_to_dict
+from services.query_generation_service import QueryGenerationService
+import services.datasource_crud as datasource_crud
+from models.meta_models import EquipmentSignal
+from config import get_db
+
+# InfluxDB v2 imports
+try:
+    from influxdb_client import InfluxDBClient, QueryApi
+    from influxdb_client.rest import ApiException
+    INFLUXDB_AVAILABLE = True
+except ImportError:
+    INFLUXDB_AVAILABLE = False
+    InfluxDBClient = None
+    QueryApi = None
+    ApiException = Exception
 
 class DataRetrievalService:
     """
-    Optimized service for widget data retrieval with Chart.js compatible timestamps
+    Service for widget data retrieval with Chart.js compatible timestamps
+    Supports SQLite, Parquet, and InfluxDB v2 data sources
     """
     
     @staticmethod
@@ -49,316 +67,228 @@ class DataRetrievalService:
             # Pre-compute available signal columns for efficiency
             available_columns = list(sorted_data_rows[0].keys()) if sorted_data_rows else []
             signal_columns = [col for col in available_columns 
-                            if col not in ['timestamp', 't_sampling_time', 'bucket_time', 'time']]
+                            if col not in ['timestamp', 't_sampling_time', 'bucket_time', 'time', '_time']]
             
-            # Process each data row
+            # Process each row
             for row in sorted_data_rows:
-                # CRITICAL IMPROVEMENT: Extract and send full ISO timestamp
-                timestamp = DataRetrievalService._extract_timestamp(row)
+                # Extract timestamp (handle different column names)
+                timestamp = (row.get('timestamp') or 
+                           row.get('_time') or 
+                           row.get('t_sampling_time') or 
+                           row.get('bucket_time') or 
+                           row.get('time'))
+                
                 if timestamp:
-                    # Send ISO format timestamp that Chart.js can directly parse
-                    iso_timestamp = timestamp.isoformat()
+                    # Ensure timestamp is in ISO format for Chart.js
+                    if isinstance(timestamp, str):
+                        # Already a string, ensure it's properly formatted
+                        try:
+                            # Parse and reformat to ensure ISO compliance
+                            parsed_time = pd.to_datetime(timestamp)
+                            iso_timestamp = parsed_time.isoformat()
+                        except:
+                            iso_timestamp = timestamp
+                    else:
+                        # Convert datetime object to ISO string
+                        iso_timestamp = pd.to_datetime(timestamp).isoformat()
+                    
                     labels.append(iso_timestamp)
                     
-                    # Extract signal values efficiently
-                    if signal_metadata:
-                        DataRetrievalService._extract_signal_values_optimized(
-                            row, signal_metadata, signal_columns, signal_data
-                        )
-                    else:
-                        # Fallback: extract all numeric columns
-                        DataRetrievalService._extract_numeric_values(row, signal_data)
+                    # Extract signal values
+                    for col in signal_columns:
+                        if col not in signal_data:
+                            signal_data[col] = []
+                        
+                        value = row.get(col)
+                        # Handle None/null values
+                        if value is None:
+                            signal_data[col].append(None)
+                        else:
+                            try:
+                                # Convert to float for Chart.js
+                                signal_data[col].append(float(value))
+                            except (ValueError, TypeError):
+                                signal_data[col].append(None)
             
-            # Create datasets
-            datasets = DataRetrievalService._create_datasets(signal_data, len(labels))
+            # Create datasets for Chart.js
+            datasets = []
+            for i, (signal_key, values) in enumerate(signal_data.items()):
+                # Find signal metadata for proper labeling
+                signal_label = signal_key
+                signal_unit = ""
+                
+                if signal_metadata:
+                    for signal_meta in signal_metadata:
+                        if (signal_meta.get('key') == signal_key or 
+                            signal_meta.get('value') == signal_key):
+                            signal_label = signal_meta.get('desc') or signal_meta.get('value') or signal_key
+                            signal_unit = signal_meta.get('unit', "")
+                            break
+                
+                # Add unit to label if available
+                if signal_unit:
+                    signal_label = f"{signal_label} ({signal_unit})"
+                
+                datasets.append({
+                    "label": signal_label,
+                    "data": values,
+                    "unit": signal_unit,
+                    "signal_key": signal_key
+                })
             
-            # Calculate time range with full ISO timestamps
-            time_range = DataRetrievalService._calculate_time_range_iso(sorted_data_rows)
+            # Calculate time range
+            time_range = None
+            if labels:
+                time_range = {
+                    "start": labels[0],
+                    "end": labels[-1],
+                    "duration_minutes": DataRetrievalService._calculate_duration_minutes(labels[0], labels[-1])
+                }
             
-            result = {
-                "labels": labels,  # Now contains ISO timestamps like "2025-03-01T07:50:00"
+            return {
+                "labels": labels,
                 "datasets": datasets,
                 "isEmpty": False,
                 "totalPoints": len(labels),
-                "timeRange": time_range,
-                "actual_points": len(labels)
+                "timeRange": time_range
             }
             
-            # Add debug info for first few timestamps
-            if len(labels) > 0:
-                print(f"✅ Chart data formatted with ISO timestamps:")
-                print(f"   - Total points: {len(labels)}")
-                print(f"   - First timestamp: {labels[0]}")
-                print(f"   - Last timestamp: {labels[-1]}")
-                print(f"   - Sample values: {datasets[0]['data'][:3] if datasets and datasets[0]['data'] else []}")
-            
-            return result
-            
         except Exception as e:
-            print(f"❌ Error formatting chart data: {str(e)}")
+            print(f"❌ Error formatting data for chart: {str(e)}")
             return {
                 "labels": [],
                 "datasets": [],
                 "isEmpty": True,
                 "totalPoints": 0,
-                "timeRange": None,
                 "error": str(e)
             }
     
     @staticmethod
-    def _extract_signal_values_optimized(row: Dict, signal_metadata: List[Dict], 
-                                       signal_columns: List[str], signal_data: Dict):
-        """
-        Optimized signal value extraction with minimal overhead
-        """
-        for signal_info in signal_metadata:
-            signal_alias = signal_info.get('value', signal_info.get('signal_value', 'Unknown Signal'))
-            signal_value = None
-            
-            # Fast path: Try signal alias directly (most common case)
-            if signal_alias in row:
-                signal_value = row[signal_alias]
-            
-            # Fallback 1: Try database key
-            elif signal_info.get('key') in row:
-                signal_value = row[signal_info.get('key')]
-            
-            # Fallback 2: Smart matching (only if needed)
-            else:
-                signal_key = signal_info.get('key', '').lower()
-                signal_alias_lower = signal_alias.lower()
-                
-                for col_name in signal_columns:
-                    col_lower = col_name.lower()
-                    if (signal_alias_lower in col_lower or 
-                        col_lower in signal_alias_lower or
-                        (signal_key and signal_key in col_lower)):
-                        signal_value = row[col_name]
+    def _sort_data_by_timestamp(data_rows: List[Dict]) -> List[Dict]:
+        """Sort data by timestamp column"""
+        try:
+            # Find timestamp column
+            timestamp_col = None
+            if data_rows:
+                for col in ['timestamp', '_time', 't_sampling_time', 'bucket_time', 'time']:
+                    if col in data_rows[0]:
+                        timestamp_col = col
                         break
             
-            # Add to signal data
-            if signal_alias not in signal_data:
-                signal_data[signal_alias] = []
-            
-            if signal_value is not None:
-                try:
-                    signal_data[signal_alias].append(float(signal_value))
-                except (ValueError, TypeError):
-                    signal_data[signal_alias].append(None)
+            if timestamp_col:
+                return sorted(data_rows, key=lambda x: pd.to_datetime(x[timestamp_col]))
             else:
-                signal_data[signal_alias].append(None)
+                return data_rows
+        except:
+            return data_rows
     
     @staticmethod
-    def _extract_numeric_values(row: Dict, signal_data: Dict):
-        """
-        Extract all numeric values when no signal metadata available
-        """
-        excluded_cols = {'timestamp', 't_sampling_time', 'bucket_time', 'time'}
-        
-        for key, value in row.items():
-            if key not in excluded_cols and value is not None:
-                try:
-                    numeric_value = float(value)
-                    if key not in signal_data:
-                        signal_data[key] = []
-                    signal_data[key].append(numeric_value)
-                except (ValueError, TypeError):
-                    continue
-    
-    @staticmethod
-    def _create_datasets(signal_data: Dict, label_count: int) -> List[Dict]:
-        """
-        Create chart datasets with optimized color assignment
-        """
-        datasets = []
-        colors = [
-            "#2196F3", "#4CAF50", "#FF9800", "#9C27B0", 
-            "#F44336", "#00BCD4", "#FFEB3B", "#795548"
-        ]
-        
-        for idx, (signal_alias, values) in enumerate(signal_data.items()):
-            # Ensure values match label count
-            if len(values) != label_count:
-                values = values[:label_count]
-            
-            color = colors[idx % len(colors)]
-            
-            dataset = {
-                "label": signal_alias,
-                "data": values,
-                "borderColor": color,
-                "backgroundColor": f"{color}20",
-                "borderWidth": 2,
-                "fill": False,
-                "tension": 0.1,
-                "pointRadius": 3,
-                "pointHoverRadius": 5
-            }
-            datasets.append(dataset)
-        
-        return datasets
-    
-    @staticmethod
-    def _calculate_time_range_iso(sorted_data_rows: List[Dict]) -> Optional[Dict]:
-        """
-        Calculate time range with ISO formatted timestamps for Chart.js
-        """
-        if not sorted_data_rows:
-            return None
-        
-        first_timestamp = DataRetrievalService._extract_timestamp(sorted_data_rows[0])
-        last_timestamp = DataRetrievalService._extract_timestamp(sorted_data_rows[-1])
-        
-        if first_timestamp and last_timestamp:
-            return {
-                "start": first_timestamp.isoformat(),  # ISO format for Chart.js
-                "end": last_timestamp.isoformat(),     # ISO format for Chart.js
-                "duration_minutes": (last_timestamp - first_timestamp).total_seconds() / 60
-            }
-        return None
+    def _calculate_duration_minutes(start_time: str, end_time: str) -> float:
+        """Calculate duration in minutes between two timestamps"""
+        try:
+            start_dt = pd.to_datetime(start_time)
+            end_dt = pd.to_datetime(end_time)
+            duration = end_dt - start_dt
+            return duration.total_seconds() / 60
+        except:
+            return 0.0
     
     @staticmethod
     def _get_signal_metadata_from_db(signal_ids: List[int]) -> List[Dict]:
-        """
-        Get signal metadata from database - optimized with minimal logging
-        """
+        """Get signal metadata from database"""
         try:
-            from models.meta_models import EquipmentSignal
-            from config import get_db
-            
-            signal_metadata = []
             db = next(get_db())
-            
-            # Batch query for efficiency
-            signals = db.query(EquipmentSignal).filter(
-                EquipmentSignal.id.in_(signal_ids)
-            ).all()
-            
-            for signal in signals:
-                signal_metadata.append({
-                    'signal_id': signal.id,
-                    'key': signal.key,
-                    'value': signal.value,
-                    'unit': signal.unit,
-                    'equipment_id': signal.eqp_id
-                })
-            
-            db.close()
-            return signal_metadata
-            
-        except Exception:
-            # Minimal fallback
-            return [{'key': 'soc', 'value': 'soc', 'column_name': 'soc'}]
-    
-    @staticmethod
-    def _sort_data_by_timestamp(data_rows: List[Dict]) -> List[Dict]:
-        """
-        Optimized timestamp sorting with efficient key detection
-        """
-        if not data_rows:
-            return data_rows
-        
-        # Find timestamp column efficiently
-        first_row = data_rows[0]
-        timestamp_col = None
-        
-        for col in ['timestamp', 't_sampling_time', 'bucket_time', 'time']:
-            if col in first_row:
-                timestamp_col = col
-                break
-        
-        if not timestamp_col:
-            return data_rows
-        
-        # Optimized sort function
-        def get_sort_key(row):
-            ts_val = row.get(timestamp_col)
-            if ts_val is None:
-                return datetime.min
-            if isinstance(ts_val, datetime):
-                return ts_val
-            # Fast path for pandas timestamps
-            if hasattr(ts_val, 'to_pydatetime'):
-                return ts_val.to_pydatetime()
-            # String parsing fallback
-            if isinstance(ts_val, str):
-                try:
-                    if 'T' in ts_val or '+' in ts_val:
-                        return datetime.fromisoformat(ts_val.replace('Z', '+00:00'))
-                    elif ':' in ts_val:
-                        today = datetime.now().date()
-                        time_parts = ts_val.split(':')
-                        hour, minute = int(time_parts[0]), int(time_parts[1])
-                        second = int(time_parts[2]) if len(time_parts) > 2 else 0
-                        return datetime.combine(today, datetime.min.time().replace(
-                            hour=hour, minute=minute, second=second
-                        ))
-                    else:
-                        return datetime.fromisoformat(ts_val)
-                except:
-                    return datetime.min
-            return datetime.min
-        
-        return sorted(data_rows, key=get_sort_key)
-    
-    @staticmethod
-    def _extract_timestamp(row: Dict) -> Optional[datetime]:
-        """
-        Extract timestamp and return as datetime object for ISO conversion
-        """
-        for col in ['timestamp', 't_sampling_time', 'bucket_time', 'time']:
-            if col in row and row[col] is not None:
-                ts_val = row[col]
-                
-                # Return datetime objects directly
-                if isinstance(ts_val, datetime):
-                    return ts_val
-                    
-                # Fast path for pandas timestamps - convert to datetime
-                if hasattr(ts_val, 'to_pydatetime'):
-                    return ts_val.to_pydatetime()
-                
-                # String parsing to datetime
-                if isinstance(ts_val, str):
-                    try:
-                        if 'T' in ts_val or '+' in ts_val:
-                            return datetime.fromisoformat(ts_val.replace('Z', '+00:00'))
-                        elif ':' in ts_val:
-                            # For time-only strings, use current date as base
-                            # This maintains the original behavior but now we return full datetime
-                            today = datetime.now().date()
-                            time_parts = ts_val.split(':')
-                            hour, minute = int(time_parts[0]), int(time_parts[1])
-                            second = int(time_parts[2]) if len(time_parts) > 2 else 0
-                            return datetime.combine(today, datetime.min.time().replace(
-                                hour=hour, minute=minute, second=second
-                            ))
-                        else:
-                            return datetime.fromisoformat(ts_val)
-                    except:
-                        continue
-        return None
+            metadata = []
+            for signal_id in signal_ids:
+                signal = db.query(EquipmentSignal).filter(EquipmentSignal.id == signal_id).first()
+                if signal:
+                    metadata.append({
+                        "id": signal.id,
+                        "key": signal.key,
+                        "value": signal.value,
+                        "unit": signal.unit,
+                        "desc": signal.desc
+                    })
+            return metadata
+        except:
+            return []
     
     @staticmethod
     def execute_widget_query(query: str, data_source_type: str, connection_config: Dict) -> Tuple[bool, List[Dict], str]:
-        """
-        Execute widget query and return results
-        """
+        """Execute query based on data source type and return results"""
         try:
-            if data_source_type == "sqlite":
+            if data_source_type.lower() == "sqlite3":
                 return DataRetrievalService._execute_sqlite_query(query, connection_config)
-            elif data_source_type == "parquet":
+            elif data_source_type.lower() == "parquet":
                 return DataRetrievalService._execute_parquet_query(query, connection_config)
+            elif data_source_type.lower() == "influxdb":
+                return DataRetrievalService._execute_influxdb_query(query, connection_config)
             else:
                 return False, [], f"Unsupported data source type: {data_source_type}"
         except Exception as e:
             return False, [], f"Query execution error: {str(e)}"
     
     @staticmethod
+    def _execute_influxdb_query(query: str, connection_config: Dict) -> Tuple[bool, List[Dict], str]:
+        """Execute InfluxDB v2 Flux query"""
+        
+        if not INFLUXDB_AVAILABLE:
+            return False, [], "InfluxDB client library not installed"
+        
+        try:
+            # Extract connection parameters
+            url = connection_config.get('url', 'http://localhost:8086')
+            token = connection_config.get('token')
+            org = connection_config.get('org', 'primary')
+            
+            if not token:
+                return False, [], "InfluxDB token not found in connection config"
+            
+            with InfluxDBClient(url=url, token=token, org=org, timeout=30_000) as client:
+                query_api = client.query_api()
+                
+                try:
+                    # Execute Flux query
+                    result = query_api.query(query)
+                    
+                    # Convert result to list of dictionaries
+                    data_rows = []
+                    for table in result:
+                        for record in table.records:
+                            # Build row dictionary
+                            row = {}
+                            
+                            # Add timestamp
+                            if record.get_time():
+                                row['_time'] = record.get_time().isoformat()
+                            
+                            # Add all fields from the record
+                            values = record.values
+                            for key, value in values.items():
+                                if key not in ['result', 'table', '_start', '_stop']:
+                                    row[key] = value
+                            
+                            data_rows.append(row)
+                    
+                    return True, data_rows, ""
+                    
+                except ApiException as e:
+                    if e.status == 400:
+                        return False, [], f"Invalid Flux query: {str(e)}"
+                    elif e.status == 403:
+                        return False, [], "Insufficient permissions to query InfluxDB"
+                    else:
+                        return False, [], f"InfluxDB API error: {str(e)}"
+                except Exception as e:
+                    return False, [], f"InfluxDB query execution failed: {str(e)}"
+                    
+        except Exception as e:
+            return False, [], f"InfluxDB connection error: {str(e)}"
+    
+    @staticmethod
     def _execute_parquet_query(query: str, connection_config: Dict) -> Tuple[bool, List[Dict], str]:
         """Execute DuckDB query against Parquet files"""
         try:
-            import duckdb
             conn = duckdb.connect()
             result = conn.execute(query).fetchdf()
             data_rows = result.to_dict('records')
@@ -370,9 +300,7 @@ class DataRetrievalService:
     def _execute_sqlite_query(query: str, connection_config: Dict) -> Tuple[bool, List[Dict], str]:
         """Execute SQLite query"""
         try:
-            import sqlite3
-            
-            db_path = connection_config.get('db_path', '')
+            db_path = connection_config.get('database_path', '')
             if not db_path:
                 return False, [], "Database path not found in connection config"
             
@@ -395,9 +323,6 @@ class DataRetrievalService:
         Complete widget data retrieval pipeline with Chart.js optimized timestamps
         """
         try:
-            from services.widget_crud import get_widget_by_id, widget_to_dict
-            from services.query_generation_service import QueryGenerationService
-            
             # Get widget configuration
             widget = get_widget_by_id(db, widget_id)
             if not widget:
@@ -465,38 +390,12 @@ class DataRetrievalService:
             if start_dt >= end_dt:
                 return False, "Start time must be before end time"
             
-            return True, ""
+            # Check if time range is reasonable (not too large)
+            duration = end_dt - start_dt
+            if duration.days > 365:
+                return False, "Time range cannot exceed 1 year"
+            
+            return True, "Time range is valid"
+            
         except Exception as e:
             return False, f"Time range validation error: {str(e)}"
-
-    @staticmethod
-    def get_data_source_status(db: Session, connection_id: str = None) -> Dict[str, Any]:
-        """Get status of data source connection"""
-        try:
-            import services.datasource_crud as datasource_crud
-            
-            if connection_id:
-                connection = datasource_crud.get_data_connection_by_id(db, connection_id)
-                if not connection:
-                    return {"status": "error", "message": "Connection not found"}
-                connections = [connection]
-            else:
-                connections = datasource_crud.get_all_data_connections(db)
-            
-            status_info = {
-                "total_connections": len(connections),
-                "active_connections": sum(1 for conn in connections if conn.status == 'active'),
-                "connections": [
-                    {
-                        "id": conn.id,
-                        "name": conn.name,
-                        "db_type": conn.db_type,
-                        "status": conn.status
-                    }
-                    for conn in connections
-                ]
-            }
-            
-            return status_info
-        except Exception as e:
-            return {"status": "error", "message": f"Status check error: {str(e)}"}

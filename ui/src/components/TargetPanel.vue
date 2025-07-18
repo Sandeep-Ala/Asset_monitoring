@@ -1,4 +1,4 @@
-<!-- components/TargetPanel.vue - ENHANCED SIGNAL DIALOG WITH VALUE FIELD -->
+<!-- components/TargetPanel.vue - Enhanced with InfluxDB Support -->
 <template>
   <div class="target-panel">
     <!-- Master Model Display -->
@@ -20,7 +20,7 @@
               </q-chip>
             </div>
             <div class="text-caption text-grey-7">
-              Auto-created from first table drag
+              Auto-created from first {{ dataSourceType === 'influxdb' ? 'measurement' : 'table' }} drag
             </div>
           </q-card-section>
 
@@ -33,12 +33,15 @@
                 <div class="text-h6">{{ masterModel.name }}</div>
                 <div class="text-caption text-grey-7">
                   Source: {{ masterModel.source_table }}
+                  <span v-if="dataSourceType === 'influxdb'" class="text-orange q-ml-sm">
+                    (InfluxDB Measurement)
+                  </span>
                 </div>
               </div>
             </div>
             <div v-else class="text-center text-grey-6 q-py-md">
               <q-icon name="info" size="md" class="q-mb-sm" />
-              <div>Master Model will be auto-created when you drag a table to Equipment</div>
+              <div>Master Model will be auto-created when you drag {{ dataSourceType === 'influxdb' ? 'a measurement' : 'a table' }} to Equipment</div>
             </div>
           </q-card-section>
         </q-card>
@@ -59,7 +62,7 @@
               </q-chip>
             </div>
             <div class="text-caption text-grey-7">
-              Drag tables here to create equipment
+              Drag {{ dataSourceType === 'influxdb' ? 'measurements' : 'tables' }} here to create equipment
             </div>
           </q-card-section>
 
@@ -82,13 +85,17 @@
                   class="equipment-item"
                 >
                   <q-item-section avatar>
-                    <q-icon name="settings" color="primary" />
+                    <q-icon :name="getEquipmentIcon(equipment)" color="primary" />
                   </q-item-section>
                   <q-item-section>
                     <q-item-label>{{ equipment.name }}</q-item-label>
                     <q-item-label caption>
                       From: {{ equipment.source_table }}
                       <span v-if="equipment.location"> • Location: {{ equipment.location }}</span>
+                      <span v-if="equipment.influxdb_info" class="q-ml-sm text-orange">
+                        • {{ equipment.influxdb_info.field_count || 0 }} fields
+                        • {{ equipment.influxdb_info.tag_count || 0 }} tags
+                      </span>
                     </q-item-label>
                   </q-item-section>
                   <q-item-section side>
@@ -122,9 +129,9 @@
             <!-- Empty Drop Zone -->
             <div v-else class="empty-drop-zone q-pa-xl text-center">
               <q-icon name="add_circle_outline" size="48px" color="grey-4" />
-              <div class="text-h6 text-grey-6 q-mt-md">Drop Tables Here</div>
+              <div class="text-h6 text-grey-6 q-mt-md">Drop {{ dataSourceType === 'influxdb' ? 'Measurements' : 'Tables' }} Here</div>
               <div class="text-body2 text-grey-7">
-                Drag tables from the left panel to create equipment
+                Drag {{ dataSourceType === 'influxdb' ? 'measurements' : 'tables' }} from the left panel to create equipment
               </div>
             </div>
           </div>
@@ -143,7 +150,12 @@
               </q-chip>
             </div>
             <div class="text-caption text-grey-7">
-              Drag any columns here (for GROUP BY operations)
+              <span v-if="dataSourceType === 'influxdb'">
+                Drag tags here (for filtering by label values)
+              </span>
+              <span v-else>
+                Drag any columns here (for GROUP BY operations)
+              </span>
             </div>
           </q-card-section>
 
@@ -166,12 +178,15 @@
                   class="filter-item"
                 >
                   <q-item-section avatar>
-                    <q-icon name="filter_alt" color="orange" />
+                    <q-icon :name="getFilterIcon(filter)" color="orange" />
                   </q-item-section>
                   <q-item-section>
                     <q-item-label>{{ filter.filter_key }}</q-item-label>
                     <q-item-label caption>
                       {{ filter.data_type }} • Value: {{ filter.filter_value || 'Not set' }}
+                      <span v-if="filter.influxdb_info" class="q-ml-sm text-orange">
+                        • {{ filter.influxdb_info.category }}
+                      </span>
                       <br>Equipment: {{ getEquipmentName(filter.eqp_id) || 'No equipment' }}
                     </q-item-label>
                   </q-item-section>
@@ -219,9 +234,14 @@
             <!-- Empty Drop Zone -->
             <div v-else class="empty-drop-zone q-pa-xl text-center">
               <q-icon name="filter_list_off" size="48px" color="grey-4" />
-              <div class="text-h6 text-grey-6 q-mt-md">Drop Filter Columns</div>
+              <div class="text-h6 text-grey-6 q-mt-md">Drop Filter {{ dataSourceType === 'influxdb' ? 'Tags' : 'Columns' }}</div>
               <div class="text-body2 text-grey-7">
-                Drag any columns for grouping operations
+                <span v-if="dataSourceType === 'influxdb'">
+                  Drag tags for filtering operations
+                </span>
+                <span v-else>
+                  Drag any columns for grouping operations
+                </span>
               </div>
               <q-btn
                 flat
@@ -250,7 +270,12 @@
               </q-chip>
             </div>
             <div class="text-caption text-grey-7">
-              Drag columns to Signals, Specs, or Docs tabs (or add manually)
+              <span v-if="dataSourceType === 'influxdb'">
+                Drag fields to Signals tab, or add specs/docs manually
+              </span>
+              <span v-else>
+                Drag columns to Signals, Specs, or Docs tabs (or add manually)
+              </span>
             </div>
           </q-card-section>
 
@@ -266,18 +291,18 @@
             align="justify"
           >
             <q-tab name="signals" label="Signals" icon="timeline">
-              <q-badge color="red" floating v-if="multiTabData.signals.length">
-                {{ multiTabData.signals.length }}
+              <q-badge color="red" floating v-if="safeMultiTabData.signals.length">
+                {{ safeMultiTabData.signals.length }}
               </q-badge>
             </q-tab>
             <q-tab name="specs" label="Specifications" icon="engineering">
-              <q-badge color="green" floating v-if="multiTabData.specs.length">
-                {{ multiTabData.specs.length }}
+              <q-badge color="green" floating v-if="safeMultiTabData.specs.length">
+                {{ safeMultiTabData.specs.length }}
               </q-badge>
             </q-tab>
             <q-tab name="docs" label="Documents" icon="description">
-              <q-badge color="blue" floating v-if="multiTabData.docs.length">
-                {{ multiTabData.docs.length }}
+              <q-badge color="blue" floating v-if="safeMultiTabData.docs.length">
+                {{ safeMultiTabData.docs.length }}
               </q-badge>
             </q-tab>
           </q-tabs>
@@ -295,10 +320,10 @@
                 @dragleave="signalsDragOver = false"
                 @drop="(e) => handleMultiTabDrop(e, 'signals')"
               >
-                <div v-if="multiTabData.signals.length" class="q-pa-md">
+                <div v-if="safeMultiTabData.signals.length" class="q-pa-md">
                   <q-list separator>
                     <q-item
-                      v-for="signal in multiTabData.signals"
+                      v-for="signal in safeMultiTabData.signals"
                       :key="signal.id"
                       class="multi-tab-item"
                     >
@@ -310,6 +335,9 @@
                         <q-item-label caption>
                           <strong>Value:</strong> {{ signal.value || 'Not set' }}
                           <span v-if="signal.unit"> • <strong>Unit:</strong> {{ signal.unit }}</span>
+                          <span v-if="signal.influxdb_info" class="q-ml-sm text-orange">
+                            • {{ signal.influxdb_info.category }}
+                          </span>
                           <br>{{ signal.desc }}
                         </q-item-label>
                       </q-item-section>
@@ -331,9 +359,14 @@
 
                 <div v-else class="empty-drop-zone q-pa-xl text-center">
                   <q-icon name="timeline" size="48px" color="grey-4" />
-                  <div class="text-h6 text-grey-6 q-mt-md">Drop Signal Columns</div>
+                  <div class="text-h6 text-grey-6 q-mt-md">Drop Signal {{ dataSourceType === 'influxdb' ? 'Fields' : 'Columns' }}</div>
                   <div class="text-body2 text-grey-7">
-                    Drag columns for signal monitoring
+                    <span v-if="dataSourceType === 'influxdb'">
+                      Drag fields for signal monitoring
+                    </span>
+                    <span v-else>
+                      Drag columns for signal monitoring
+                    </span>
                   </div>
                 </div>
               </div>
@@ -348,10 +381,10 @@
                 @dragleave="specsDragOver = false"
                 @drop="(e) => handleMultiTabDrop(e, 'specs')"
               >
-                <div v-if="multiTabData.specs.length" class="q-pa-md">
+                <div v-if="safeMultiTabData.specs.length" class="q-pa-md">
                   <q-list separator>
                     <q-item
-                      v-for="spec in multiTabData.specs"
+                      v-for="spec in safeMultiTabData.specs"
                       :key="spec.id"
                       class="multi-tab-item"
                     >
@@ -439,10 +472,10 @@
                 @dragleave="docsDragOver = false"
                 @drop="(e) => handleMultiTabDrop(e, 'docs')"
               >
-                <div v-if="multiTabData.docs.length" class="q-pa-md">
+                <div v-if="safeMultiTabData.docs.length" class="q-pa-md">
                   <q-list separator>
                     <q-item
-                      v-for="doc in multiTabData.docs"
+                      v-for="doc in safeMultiTabData.docs"
                       :key="doc.id"
                       class="multi-tab-item"
                     >
@@ -811,6 +844,10 @@ export default {
     selectedTable: {
       type: Object,
       default: null
+    },
+    dataSourceType: {
+      type: String,
+      default: 'sqlite3'
     }
   },
   emits: [
@@ -879,8 +916,19 @@ export default {
     }
   },
   computed: {
+    // FIXED: Safe access to multiTabData with proper null checks
+    safeMultiTabData() {
+      return {
+        signals: this.multiTabData?.signals || [],
+        specs: this.multiTabData?.specs || [],
+        docs: this.multiTabData?.docs || []
+      }
+    },
+
+    // FIXED: Safe calculation of total items
     totalMultiTabItems() {
-      return Object.values(this.multiTabData).reduce((sum, arr) => sum + arr.length, 0)
+      const safe = this.safeMultiTabData
+      return (safe.signals?.length || 0) + (safe.specs?.length || 0) + (safe.docs?.length || 0)
     },
 
     equipmentOptions() {
@@ -896,40 +944,79 @@ export default {
     }
   },
   methods: {
+    // Equipment methods
     handleEquipmentDrop(event) {
       event.preventDefault()
       this.equipmentDragOver = false
 
       try {
         const dragData = JSON.parse(event.dataTransfer.getData('application/json'))
+        console.log('📦 Equipment drop received:', dragData)
 
-        if (dragData.type === 'table') {
+        if (dragData.type === 'table' || dragData.type === 'measurement') {
           this.$emit('equipment-drop', dragData.data)
         } else {
           this.$q.notify({
             type: 'warning',
-            message: 'Only tables can be dropped in Equipment zone'
+            message: `Only ${this.dataSourceType === 'influxdb' ? 'measurements' : 'tables'} can be dropped in Equipment zone`
           })
         }
       } catch (error) {
-        console.error('Drop error:', error)
+        console.error('❌ Equipment drop error:', error)
       }
     },
 
+    editEquipment(equipment) {
+      this.editingEquipment = equipment
+      this.editingEquipmentName = equipment.name
+      this.editingEquipmentLocation = equipment.location || ''
+      this.showEditDialog = true
+    },
+
+    saveEquipmentEdit() {
+      if (this.editingEquipmentName.trim()) {
+        this.$emit('equipment-edit', this.editingEquipment, {
+          name: this.editingEquipmentName.trim(),
+          location: this.editingEquipmentLocation.trim()
+        })
+        this.showEditDialog = false
+      }
+    },
+
+    removeEquipment(equipment) {
+      this.$emit('equipment-remove', equipment)
+    },
+
+    getEquipmentIcon(equipment) {
+      if (this.dataSourceType === 'influxdb') {
+        return 'timeline'
+      } else if (this.dataSourceType === 'parquet') {
+        return 'folder'
+      }
+      return 'precision_manufacturing'
+    },
+
+    // Filter methods
     handleFilterDrop(event) {
       event.preventDefault()
       this.filtersDragOver = false
 
       try {
         const dragData = JSON.parse(event.dataTransfer.getData('application/json'))
+        console.log('🔍 Filter drop received:', dragData)
 
-        if (dragData.type === 'column') {
+        if (dragData.type === 'column' || dragData.type === 'tag') {
           this.showFilterValueDialog(dragData.data)
         } else if (dragData.type === 'multi-column') {
           this.showMultiFilterDialog(dragData.data)
+        } else {
+          this.$q.notify({
+            type: 'warning',
+            message: `Only ${this.dataSourceType === 'influxdb' ? 'tags' : 'columns'} can be dropped in Filter zone`
+          })
         }
       } catch (error) {
-        console.error('Filter drop error:', error)
+        console.error('❌ Filter drop error:', error)
       }
     },
 
@@ -940,7 +1027,7 @@ export default {
         eqp_id: this.equipmentList.length > 0 ? this.equipmentList[0].id : null,
         source_column: column.name,
         source_table: this.selectedTable?.name,
-        data_type: column.data_type
+        data_type: column.data_type || column.type
       }
       this.editingFilter = null
       this.showFilterDialog = true
@@ -963,60 +1050,6 @@ export default {
             source_column: columns[i].name
           })
         }
-      }
-    },
-
-    handleMultiTabDrop(event, tabType) {
-      event.preventDefault()
-      this[`${tabType}DragOver`] = false
-
-      try {
-        const dragData = JSON.parse(event.dataTransfer.getData('application/json'))
-
-        if (dragData.type === 'column') {
-          if (tabType === 'signals') {
-            // Show enhanced signal dialog with value and unit fields
-            this.pendingSignals = [dragData.data]
-            this.showSignalDialog = true
-          } else {
-            this.$emit('multi-tab-drop', {
-              column: dragData.data,
-              tabType: tabType
-            })
-          }
-        } else if (dragData.type === 'multi-column') {
-          if (tabType === 'signals') {
-            // Show enhanced signal dialog for multiple signals
-            this.pendingSignals = dragData.data
-            this.showSignalDialog = true
-          } else {
-            dragData.data.forEach(column => {
-              this.$emit('multi-tab-drop', {
-                column: column,
-                tabType: tabType
-              })
-            })
-          }
-        }
-      } catch (error) {
-        console.error('Multi-tab drop error:', error)
-      }
-    },
-
-    editEquipment(equipment) {
-      this.editingEquipment = equipment
-      this.editingEquipmentName = equipment.name
-      this.editingEquipmentLocation = equipment.location || ''
-      this.showEditDialog = true
-    },
-
-    saveEquipmentEdit() {
-      if (this.editingEquipmentName.trim()) {
-        this.$emit('equipment-edit', this.editingEquipment, {
-          name: this.editingEquipmentName.trim(),
-          location: this.editingEquipmentLocation.trim()
-        })
-        this.showEditDialog = false
       }
     },
 
@@ -1049,6 +1082,17 @@ export default {
         eqp_id: null
       }
       this.editingFilter = null
+    },
+
+    removeFilter(filter) {
+      this.$emit('filter-remove', filter)
+    },
+
+    getFilterIcon(filter) {
+      if (filter.influxdb_info?.category === 'tag') {
+        return 'local_offer'
+      }
+      return 'filter_list'
     },
 
     // Manual Filter Methods
@@ -1118,6 +1162,57 @@ export default {
         filter_value: '',
         eqp_id: null
       }
+    },
+
+    // Multi-tab methods
+    handleMultiTabDrop(event, tabType) {
+      event.preventDefault()
+      this[`${tabType}DragOver`] = false
+
+      try {
+        const dragData = JSON.parse(event.dataTransfer.getData('application/json'))
+        console.log('📑 Multi-tab drop received:', dragData, 'tab:', tabType)
+
+        if (dragData.type === 'column' || dragData.type === 'field' || dragData.type === 'tag') {
+          if (tabType === 'signals') {
+            // InfluxDB validation: Only fields can be signals
+            if (this.dataSourceType === 'influxdb' && dragData.type !== 'field') {
+              this.$q.notify({
+                type: 'warning',
+                message: 'Only fields can be used as signals in InfluxDB'
+              })
+              return
+            }
+
+            // Show enhanced signal dialog with value and unit fields
+            this.pendingSignals = [dragData.data]
+            this.showSignalDialog = true
+          } else {
+            this.$emit('multi-tab-drop', dragData.data, tabType)
+          }
+        } else if (dragData.type === 'multi-column') {
+          if (tabType === 'signals') {
+            // Show enhanced signal dialog for multiple signals
+            this.pendingSignals = dragData.data
+            this.showSignalDialog = true
+          } else {
+            dragData.data.forEach(column => {
+              this.$emit('multi-tab-drop', column, tabType)
+            })
+          }
+        } else {
+          this.$q.notify({
+            type: 'warning',
+            message: 'Only columns, fields, or tags can be dropped here'
+          })
+        }
+      } catch (error) {
+        console.error('❌ Multi-tab drop error:', error)
+      }
+    },
+
+    removeMultiTabItem(item, tabType) {
+      this.$emit('multi-tab-remove', { item, tabType })
     },
 
     // Manual Specification Methods
@@ -1315,13 +1410,10 @@ export default {
 
       this.pendingSignals.forEach(column => {
         this.$emit('multi-tab-drop', {
-          column: {
-            ...column,
-            value: this.signalValue || column.name, // FIXED: Use signal name as default if no value provided
-            unit: this.signalUnit    // Existing: Include signal unit
-          },
-          tabType: 'signals'
-        })
+          ...column,
+          value: this.signalValue || column.name, // FIXED: Use signal name as default if no value provided
+          unit: this.signalUnit    // Existing: Include signal unit
+        }, 'signals')
       })
       this.resetSignalDialog()
     },
@@ -1337,18 +1429,6 @@ export default {
     getEquipmentName(equipmentId) {
       const equipment = this.equipmentList.find(eq => eq.id === equipmentId)
       return equipment ? equipment.name : 'Unknown'
-    },
-
-    removeEquipment(equipment) {
-      this.$emit('equipment-remove', equipment)
-    },
-
-    removeFilter(filter) {
-      this.$emit('filter-remove', filter)
-    },
-
-    removeMultiTabItem(item, tabType) {
-      this.$emit('multi-tab-remove', { item, tabType })
     }
   }
 }
@@ -1431,5 +1511,22 @@ export default {
 .multi-tab-item:has(.q-icon[name="note_add"]) {
   border-left-color: #9c27b0;
   background: linear-gradient(90deg, #f3e5f5 0%, transparent 10%);
+}
+
+/* InfluxDB specific styling */
+.text-orange {
+  color: #ff9800 !important;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .target-panel .row {
+    margin: 0;
+  }
+
+  .target-panel .col-12,
+  .target-panel .col-md-6 {
+    padding: 4px;
+  }
 }
 </style>

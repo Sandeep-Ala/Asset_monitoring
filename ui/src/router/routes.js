@@ -11,6 +11,8 @@ import TestPage from 'pages/TestPage.vue'
 import zoomtest from 'pages/ZoomableChartTestPage.vue'
 import widget_test from 'pages/WidgetIntegrationTestPage.vue'
 import widget_test_simple from 'pages/TestwidgetSimple.vue'
+import influx_test_simple from 'pages/InfluxDBTestPage.vue'
+
 
 const routes = [
   {
@@ -64,6 +66,14 @@ const routes = [
             {
         path: '/widget-simple-test',
         component: widget_test_simple,
+        meta: {
+          title: 'Phase 6.3.5: Widget Integration Fix ',
+          icon: 'bug_report'
+        }
+      },
+                  {
+        path: '/influx-simple-test',
+        component: influx_test_simple,
         meta: {
           title: 'Phase 6.3.5: Widget Integration Fix ',
           icon: 'bug_report'

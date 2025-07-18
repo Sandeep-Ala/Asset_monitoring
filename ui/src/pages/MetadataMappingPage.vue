@@ -1,4 +1,4 @@
-<!-- pages/MetadataMappingPage.vue - COMPLETE VERSION 3 WITH SIGNAL VALUE ENHANCEMENT -->
+<!-- pages/MetadataMappingPage.vue - COMPLETE VERSION WITH INFLUXDB INTEGRATION -->
 <template>
   <q-page class="q-pa-md">
     <!-- Page Header -->
@@ -11,7 +11,7 @@
               Metadata Mapping
             </div>
             <div class="text-subtitle2 text-grey-7">
-              Drag tables to create equipment, drag columns or add manual entries for filters, signals, specs, and docs
+              Drag tables/measurements to create equipment, drag columns/fields for filters, signals, specs, and docs
             </div>
           </q-card-section>
         </q-card>
@@ -43,7 +43,12 @@
                       </q-item-section>
                       <q-item-section>
                         <q-item-label>{{ scope.opt.name }}</q-item-label>
-                        <q-item-label caption>{{ scope.opt.db_type }} • {{ scope.opt.status }}</q-item-label>
+                        <q-item-label caption>
+                          {{ scope.opt.db_type }} • {{ scope.opt.status }}
+                          <span v-if="scope.opt.db_type === 'influxdb'" class="text-orange">
+                            (InfluxDB v2)
+                          </span>
+                        </q-item-label>
                       </q-item-section>
                     </q-item>
                   </template>
@@ -74,49 +79,120 @@
       </div>
     </div>
 
+    <!-- Database Type Info -->
+    <div v-if="selectedConnection && connectionInfo" class="row q-gutter-md q-mb-md">
+      <div class="col-12">
+        <q-card flat bordered>
+          <q-card-section>
+            <div class="row items-center q-gutter-md">
+              <div class="col-auto">
+                <q-icon :name="getDbTypeIcon(connectionInfo.db_type)" size="md" />
+              </div>
+              <div class="col">
+                <div class="text-subtitle1">{{ connectionInfo.name }}</div>
+                <div class="text-caption text-grey-7">
+                  <span v-if="connectionInfo.db_type === 'influxdb'">
+                    InfluxDB v2 • {{ schemaData?.database_info?.bucket || 'Unknown bucket' }} •
+                    {{ schemaData?.database_info?.total_measurements || 0 }} measurements
+                  </span>
+                  <span v-else-if="connectionInfo.db_type === 'sqlite3'">
+                    SQLite3 • {{ schemaData?.database_info?.total_tables || 0 }} tables
+                  </span>
+                  <span v-else-if="connectionInfo.db_type === 'parquet'">
+                    Parquet Files • {{ schemaData?.database_info?.total_equipment_groups || 0 }} equipment groups
+                  </span>
+                </div>
+              </div>
+              <div class="col-auto">
+                <q-badge :color="connectionInfo.status === 'active' ? 'positive' : 'negative'">
+                  {{ connectionInfo.status }}
+                </q-badge>
+              </div>
+            </div>
+          </q-card-section>
+        </q-card>
+      </div>
+    </div>
+
+    <!-- InfluxDB Info Card -->
+    <div v-if="connectionInfo?.db_type === 'influxdb' && hasSchemaData" class="row q-gutter-md q-mb-md">
+      <div class="col-12">
+        <q-card flat bordered class="bg-orange-1">
+          <q-card-section>
+            <div class="text-subtitle1 text-orange-8">
+              <q-icon name="info" class="q-mr-sm" />
+              InfluxDB v2 Mapping Guide
+            </div>
+            <div class="text-body2 text-orange-7 q-mt-sm">
+              • <strong>Measurements</strong> represent different data types (equivalent to tables)<br>
+              • <strong>Fields</strong> are numeric data columns that can be aggregated<br>
+              • <strong>Tags</strong> are string labels used for filtering and grouping<br>
+              • Drag measurements to create equipment, drag fields to create signals, drag tags to create filters
+            </div>
+          </q-card-section>
+        </q-card>
+      </div>
+    </div>
+
     <!-- Main Mapping Interface -->
-    <div v-if="selectedConnection && schemaData.tables" class="q-gutter-md">
-      <!-- Source Panel -->
-       <div class="row ">
-        <div class="col-6 col-lg-4 q-pa-xs ">
-        <SourcePanel
-          :schema-data="schemaData"
-          :selected-table="selectedTable"
-          @table-selected="onTableSelected"
-          @table-drag-start="onTableDragStart"
-          @column-drag-start="onColumnDragStart"
-        />
-      </div>
+    <div v-if="selectedConnection && hasSchemaData" class="q-gutter-md">
+      <div class="row">
+        <!-- Source Panel -->
+        <div class="col-6 col-lg-4 q-pa-xs">
+          <SourcePanel
+            :schema-data="schemaData"
+            :data-source-type="connectionInfo?.db_type"
+            :selected-table="selectedTable"
+            @table-selected="onTableSelected"
+            @measurement-selected="onMeasurementSelected"
+            @table-drag-start="onTableDragStart"
+            @measurement-drag-start="onMeasurementDragStart"
+            @column-drag-start="onColumnDragStart"
+            @field-drag-start="onFieldDragStart"
+          />
+        </div>
 
-      <!-- Target Panels with enhanced signal handling -->
-      <div class="col-12 col-lg-8">
-        <TargetPanel
-          :master-model="masterModel"
-          :equipment-list="equipmentList"
-          :filters-list="filtersList"
-          :multi-tab-data="multiTabData"
-          :selected-table="selectedTable"
-          @equipment-drop="onEquipmentDrop"
-          @filter-drop="onFilterDrop"
-          @multi-tab-drop="onMultiTabDrop"
-          @equipment-edit="onEquipmentEdit"
-          @equipment-remove="onEquipmentRemove"
-          @filter-edit="onFilterEdit"
-          @filter-remove="onFilterRemove"
-          @manual-filter-add="onManualFilterAdd"
-          @manual-spec-add="onManualSpecAdd"
-          @manual-doc-add="onManualDocAdd"
-          @spec-edit="onSpecEdit"
-          @doc-edit="onDocEdit"
-          @multi-tab-remove="onMultiTabRemove"
-        />
+        <!-- Target Panels -->
+        <div class="col-12 col-lg-8">
+          <TargetPanel
+            :master-model="masterModel"
+            :equipment-list="equipmentList"
+            :filters-list="filtersList"
+            :multi-tab-data="multiTabData"
+            :selected-table="selectedTable"
+            :data-source-type="connectionInfo?.db_type"
+            @equipment-drop="onEquipmentDrop"
+            @filter-drop="onFilterDrop"
+            @multi-tab-drop="onMultiTabDrop"
+            @equipment-edit="onEquipmentEdit"
+            @equipment-remove="onEquipmentRemove"
+            @filter-edit="onFilterEdit"
+            @filter-remove="onFilterRemove"
+            @manual-filter-add="onManualFilterAdd"
+            @manual-spec-add="onManualSpecAdd"
+            @manual-doc-add="onManualDocAdd"
+            @spec-edit="onSpecEdit"
+            @doc-edit="onDocEdit"
+            @multi-tab-remove="onMultiTabRemove"
+          />
+        </div>
       </div>
     </div>
-    </div>
 
+    <!-- Loading State -->
+    <div v-if="loading" class="row q-gutter-md">
+      <div class="col-12">
+        <q-card class="q-pa-xl text-center">
+          <q-spinner-gears size="64px" color="primary" />
+          <div class="text-h6 q-mt-md">
+            Loading {{ connectionInfo?.db_type === 'influxdb' ? 'Measurements' : 'Schema' }}...
+          </div>
+        </q-card>
+      </div>
+    </div>
 
     <!-- Empty State -->
-    <div v-else-if="!loading" class="row q-gutter-md">
+    <div v-else-if="!loading && !selectedConnection" class="row q-gutter-md">
       <div class="col-12">
         <q-card class="q-pa-xl text-center">
           <q-icon name="schema" size="64px" color="grey-4" />
@@ -134,12 +210,26 @@
       </div>
     </div>
 
-    <!-- Loading State -->
-    <div v-if="loading" class="row q-gutter-md">
+    <!-- No Schema Data State -->
+    <div v-else-if="selectedConnection && !hasSchemaData && !loading" class="row q-gutter-md">
       <div class="col-12">
         <q-card class="q-pa-xl text-center">
-          <q-spinner-gears size="64px" color="primary" />
-          <div class="text-h6 q-mt-md">Loading Schema...</div>
+          <q-icon name="warning" size="64px" color="orange" />
+          <div class="text-h6 text-orange-6 q-mt-md">No Schema Data Found</div>
+          <div class="text-body2 text-grey-7 q-mb-md">
+            <span v-if="connectionInfo?.db_type === 'influxdb'">
+              No measurements found in the selected InfluxDB bucket.
+            </span>
+            <span v-else>
+              No tables found in the selected database.
+            </span>
+          </div>
+          <q-btn
+            color="primary"
+            label="Reload Schema"
+            icon="refresh"
+            @click="loadConnectionSchema"
+          />
         </q-card>
       </div>
     </div>
@@ -169,7 +259,7 @@
 </template>
 
 <script>
-import { dataSourceAPI, metaAPI } from 'src/services/api'
+import { dataSourceAPI, metaAPI } from 'src/services/Api'
 import SourcePanel from 'components/SourcePanel.vue'
 import TargetPanel from 'components/TargetPanel.vue'
 
@@ -185,6 +275,7 @@ export default {
       saving: false,
       selectedConnection: null,
       connections: [],
+      connectionInfo: null,
       schemaData: {},
       selectedTable: null,
 
@@ -215,6 +306,14 @@ export default {
       return this.equipmentList.length > 0 ||
              this.filtersList.length > 0 ||
              Object.values(this.multiTabData).some(arr => arr.length > 0)
+    },
+
+    hasSchemaData() {
+      if (this.connectionInfo?.db_type === 'influxdb') {
+        return this.schemaData?.measurements?.length > 0
+      } else {
+        return this.schemaData?.tables?.length > 0
+      }
     }
   },
   async mounted() {
@@ -226,6 +325,7 @@ export default {
       try {
         const response = await dataSourceAPI.getAllConnections()
         this.connections = response.data
+        console.log('✅ Connections loaded:', this.connections)
       } catch (error) {
         this.$q.notify({
           type: 'negative',
@@ -241,64 +341,126 @@ export default {
 
       this.loading = true
       try {
+        // Get connection info
+        const connectionResponse = await dataSourceAPI.getConnectionById(this.selectedConnection)
+        this.connectionInfo = connectionResponse.data
+        console.log('✅ Connection info loaded:', this.connectionInfo)
+
+        // Load schema based on database type
         const response = await dataSourceAPI.getCompleteSchema(this.selectedConnection, true)
+        console.log('📊 Schema API response:', response.data)
+
         if (response.data.success) {
           this.schemaData = response.data.data
           this.clearAllMappings()
+
+          console.log('📊 Schema loaded for', this.connectionInfo.db_type, ':', this.schemaData)
+
+          // Notify user based on database type
+          if (this.connectionInfo.db_type === 'influxdb') {
+            this.$q.notify({
+              type: 'positive',
+              message: `InfluxDB schema loaded: ${this.schemaData?.measurements?.length || 0} measurements found`
+            })
+          } else {
+            this.$q.notify({
+              type: 'positive',
+              message: `Schema loaded: ${this.schemaData?.tables?.length || 0} tables found`
+            })
+          }
         } else {
           throw new Error(response.data.message)
         }
       } catch (error) {
+        console.error('❌ Schema loading error:', error)
         this.$q.notify({
           type: 'negative',
           message: 'Failed to load schema: ' + error.message
         })
+        this.schemaData = {}
+        this.connectionInfo = null
       } finally {
         this.loading = false
       }
     },
 
+    getDbTypeIcon(dbType) {
+      const icons = {
+        'sqlite3': 'storage',
+        'influxdb': 'timeline',
+        'parquet': 'folder_special'
+      }
+      return icons[dbType] || 'database'
+    },
+
+    // Table/Measurement Selection
     onTableSelected(table) {
       this.selectedTable = table
     },
 
+    onMeasurementSelected(measurement) {
+      this.selectedTable = measurement
+    },
+
+    // Drag Start Events
     onTableDragStart(table) {
       console.log('🚀 Table drag started:', table.name)
+    },
+
+    onMeasurementDragStart(measurement) {
+      console.log('🚀 InfluxDB Measurement drag started:', measurement.name)
     },
 
     onColumnDragStart(column) {
       console.log('🚀 Column drag started:', column.name)
     },
 
-    onEquipmentDrop(table) {
-      console.log('📦 Equipment drop:', table)
+    onFieldDragStart(field) {
+      console.log('🚀 InfluxDB Field drag started:', field.name)
+    },
+
+    // ENHANCED: Equipment Drop Handler with InfluxDB Support
+    onEquipmentDrop(item) {
+      console.log('📦 Equipment drop:', item)
+
+      // Determine item type and name - Enhanced for InfluxDB
+      const isInfluxDB = this.connectionInfo?.db_type === 'influxdb'
+      const itemName = item.name
+      const sourceType = isInfluxDB ? 'measurement' : 'table'
 
       // Auto-create master model if not exists
-      if (!this.masterModel && table) {
+      if (!this.masterModel && item) {
         this.masterModel = {
-          name: table.name,
-          source_table: table.name,
+          name: itemName,
+          source_table: itemName,
           enable: 1
         }
         console.log('🏭 Auto-created master model:', this.masterModel)
       }
 
       // Generate equipment name
-      const baseName = table.name.replace('t_', '').replace('_', '-')
+      const baseName = itemName.replace('t_', '').replace('_', '-')
       const existingCount = this.equipmentList.filter(eq =>
-        eq.source_table === table.name
+        eq.source_table === itemName
       ).length
       const equipmentName = `${baseName}-${existingCount + 1}`
 
-      // Add equipment with location field
+      // Add equipment with InfluxDB info
       const equipment = {
         id: Date.now(),
         name: equipmentName,
-        source_table: table.name,
+        source_table: itemName,
+        source_type: sourceType,
         model_id: null,
-        location: '',
+        location: isInfluxDB ? item.bucket || '' : '',
         enable: 1,
-        isNew: true
+        isNew: true,
+        influxdb_info: isInfluxDB ? {
+          measurement: item.name,
+          bucket: item.bucket,
+          field_count: item.field_count,
+          tag_count: item.tag_count
+        } : null
       }
 
       this.equipmentList.push(equipment)
@@ -306,19 +468,32 @@ export default {
 
       this.$q.notify({
         type: 'positive',
-        message: `Equipment "${equipmentName}" added`,
+        message: `Equipment "${equipmentName}" added from ${isInfluxDB ? 'measurement' : 'table'} "${itemName}"`,
         timeout: 2000
       })
     },
 
-    onFilterDrop(data) {
-      console.log('🔧 Filter drop:', data)
+    // ENHANCED: Filter Drop Handler with InfluxDB Support
+    onFilterDrop(item) {
+      console.log('🔧 Filter drop:', item)
 
-      const filterKey = data.filter_key || data.name
-      const filterValue = data.filter_value || ''
-      const equipmentId = data.eqp_id
-      const sourceTable = data.source_table || this.selectedTable?.name
-      const sourceColumn = data.source_column || data.name
+      const isInfluxDB = this.connectionInfo?.db_type === 'influxdb'
+      const itemType = isInfluxDB ? (item.category === 'tag' ? 'tag' : 'field') : 'column'
+
+      // Only allow tags and string columns as filters for InfluxDB
+      if (isInfluxDB && item.category !== 'tag') {
+        this.$q.notify({
+          type: 'warning',
+          message: 'Only tags can be used as filters in InfluxDB'
+        })
+        return
+      }
+
+      const filterKey = item.filter_key || item.name
+      const filterValue = item.filter_value || ''
+      const equipmentId = item.eqp_id
+      const sourceTable = item.source_table || this.selectedTable?.name
+      const sourceColumn = item.source_column || item.name
 
       const existingFilter = this.filtersList.find(f =>
         f.filter_key === filterKey &&
@@ -341,9 +516,13 @@ export default {
         eqp_id: equipmentId,
         source_table: sourceTable,
         source_column: sourceColumn,
-        data_type: data.data_type || 'text',
+        data_type: item.data_type || item.type || 'text',
         isNew: true,
-        isManual: data.isManual || false
+        isManual: item.isManual || false,
+        influxdb_info: isInfluxDB ? {
+          category: item.category,
+          measurement: item.measurement
+        } : null
       }
 
       this.filtersList.push(filter)
@@ -559,78 +738,102 @@ export default {
       }
     },
 
-    // ENHANCED: Multi-Tab Drop Handler with Signal Value Support
-    onMultiTabDrop(data) {
-      console.log('📊 [ENHANCED] Multi-tab drop:', data)
-      const { column, tabType } = data
+    // ENHANCED: Multi-Tab Drop Handler with InfluxDB Support
+    onMultiTabDrop(item, category) {
+      console.log('📊 Multi-tab drop:', item, 'category:', category)
 
+      const isInfluxDB = this.connectionInfo?.db_type === 'influxdb'
+
+      // Check for existing mapping
       const allTabData = [...this.multiTabData.signals, ...this.multiTabData.specs, ...this.multiTabData.docs]
-      const exists = allTabData.some(item =>
-        item.source_column === column.name && item.source_table === this.selectedTable?.name
+      const exists = allTabData.some(existingItem =>
+        existingItem.source_column === item.name &&
+        existingItem.source_table === this.selectedTable?.name
       )
 
       if (exists) {
         this.$q.notify({
           type: 'warning',
-          message: `Column "${column.name}" already mapped`
+          message: `Column "${item.name}" already mapped`
         })
         return
       }
 
-      let item
-      if (tabType === 'signals') {
-        // ENHANCED: Signal creation with value field support
-        console.log('📊 [ENHANCED] Creating signal with value:', column.value)
-        console.log('📊 [ENHANCED] Creating signal with unit:', column.unit)
-
-        item = {
-          id: Date.now(),
-          key: column.name,
-          value: column.value || column.name, // FIXED: Always ensure value defaults to signal name
-          unit: column.unit || '',
-          desc: `Signal from ${column.name}`,
-          source_table: this.selectedTable?.name,
-          source_column: column.name,
-          data_type: column.data_type,
-          enable: 1,
-          isNew: true,
-          isManual: false // Dragged from column
+      if (category === 'signals') {
+        // Only allow fields (numeric) for signals in InfluxDB
+        if (isInfluxDB && item.category !== 'field') {
+          this.$q.notify({
+            type: 'warning',
+            message: 'Only fields can be used as signals in InfluxDB'
+          })
+          return
         }
 
-        console.log('📊 [ENHANCED] Created signal item:', item)
-      } else if (tabType === 'specs') {
-        item = {
+        const signal = {
           id: Date.now(),
-          key: column.name,
+          key: item.name,
+          value: item.value || item.name, // Enhanced: Include value
+          unit: item.unit || '',
+          desc: `Signal from ${isInfluxDB ? 'field' : 'column'} ${item.name}`,
+          source_table: this.selectedTable?.name,
+          source_column: item.name,
+          data_type: item.type || 'float',
+          enable: 1,
+          isNew: true,
+          isManual: false,
+          influxdb_info: isInfluxDB ? {
+            category: item.category,
+            measurement: item.measurement
+          } : null
+        }
+
+        this.multiTabData.signals.push(signal)
+        this.hasUnsavedChanges = true
+
+        this.$q.notify({
+          type: 'positive',
+          message: `Signal "${item.name}" added`
+        })
+      } else if (category === 'specs') {
+        const spec = {
+          id: Date.now(),
+          key: item.name,
           value: '',
-          desc: `Specification for ${column.name}`,
-          unit: column.unit || '',
+          desc: `Specification for ${item.name}`,
+          unit: item.unit || '',
           source_table: this.selectedTable?.name,
-          source_column: column.name,
+          source_column: item.name,
           enable: 1,
           isNew: true,
-          isManual: false // Dragged from column
+          isManual: false
         }
-      } else if (tabType === 'docs') {
-        item = {
+
+        this.multiTabData.specs.push(spec)
+        this.hasUnsavedChanges = true
+
+        this.$q.notify({
+          type: 'positive',
+          message: `Specification "${item.name}" added`
+        })
+      } else if (category === 'docs') {
+        const doc = {
           id: Date.now(),
           path: '',
-          desc: `Documentation for ${column.name}`,
+          desc: `Documentation for ${item.name}`,
           source_table: this.selectedTable?.name,
-          source_column: column.name,
+          source_column: item.name,
           isNew: true,
-          isManual: false // Dragged from column
+          isManual: false
         }
+
+        this.multiTabData.docs.push(doc)
+        this.hasUnsavedChanges = true
+
+        this.$q.notify({
+          type: 'positive',
+          message: `Document "${item.name}" added`
+        })
       }
-
-      this.multiTabData[tabType].push(item)
-      this.hasUnsavedChanges = true
-
-      this.$q.notify({
-        type: 'positive',
-        message: `${tabType.charAt(0).toUpperCase() + tabType.slice(1)} "${column.name}" added${tabType === 'signals' ? ` with value "${item.value}"` : ''}`,
-        timeout: 3000
-      })
     },
 
     onEquipmentEdit(equipment, updatedData) {
@@ -662,11 +865,10 @@ export default {
       }
     },
 
-    onMultiTabRemove(data) {
-      const { item, tabType } = data
-      const index = this.multiTabData[tabType].findIndex(i => i.id === item.id)
+    onMultiTabRemove(itemId, category) {
+      const index = this.multiTabData[category].findIndex(i => i.id === itemId)
       if (index !== -1) {
-        this.multiTabData[tabType].splice(index, 1)
+        this.multiTabData[category].splice(index, 1)
         this.hasUnsavedChanges = true
       }
     },
@@ -720,12 +922,6 @@ export default {
         errors.push(`Some manual documents are missing required fields`)
       }
 
-      // REMOVED: Signal value validation since it's now optional
-      // const invalidSignals = this.multiTabData.signals.filter(s => !s.value)
-      // if (invalidSignals.length > 0) {
-      //   errors.push(`Some signals are missing required value field`)
-      // }
-
       return errors
     },
 
@@ -753,6 +949,7 @@ export default {
             delete equipmentData.id
             delete equipmentData.isNew
             delete equipmentData.source_table
+            delete equipmentData.influxdb_info // Remove InfluxDB info before saving
 
             const response = await metaAPI.createEquipment(equipmentData)
             console.log('✅ Equipment saved:', response.data)
@@ -794,7 +991,7 @@ export default {
               }
             }
 
-            // ENHANCED: Save signals with value field for this equipment
+            // Save signals for this equipment (Enhanced with InfluxDB support)
             const equipmentSignals = this.multiTabData.signals.filter(s =>
               s.eqp_id === equipment.id || (!s.eqp_id && s.source_table === equipment.source_table)
             )
@@ -803,13 +1000,13 @@ export default {
                 const signalData = {
                   eqp_id: response.data.id, // Use actual saved equipment ID
                   key: signal.key,
-                  value: signal.value, // ENHANCED: Include value field
+                  value: signal.value, // Enhanced: Include value field
                   unit: signal.unit,
                   desc: signal.desc,
                   enable: signal.enable
                 }
 
-                console.log('📊 [ENHANCED] Saving signal with value:', signalData)
+                console.log('📊 Saving signal with value:', signalData)
                 const signalResponse = await metaAPI.createSignal(signalData)
                 console.log('✅ Signal saved successfully:', signalResponse.data)
               }
@@ -837,9 +1034,13 @@ export default {
 
         this.hasUnsavedChanges = false
 
+        const dbTypeMessage = this.connectionInfo?.db_type === 'influxdb' ?
+          'InfluxDB measurements and fields saved successfully!' :
+          'All mappings saved successfully!'
+
         this.$q.notify({
           type: 'positive',
-          message: `All mappings saved successfully! Signals use default values when not specified.`,
+          message: dbTypeMessage,
           timeout: 4000
         })
 
@@ -865,15 +1066,7 @@ export default {
       }
       this.selectedTable = null
       this.hasUnsavedChanges = false
-    },
-
-    getDbTypeIcon(dbType) {
-      const icons = {
-        sqlite3: 'storage',
-        influxdb: 'timeline',
-        parquet: 'folder'
-      }
-      return icons[dbType] || 'database'
+      console.log('🗑️ All mappings cleared')
     }
   }
 }
@@ -980,6 +1173,12 @@ export default {
 .bg-blue-1 {
   background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
   border: 1px solid #90caf9;
+}
+
+/* InfluxDB info card */
+.bg-orange-1 {
+  background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);
+  border: 1px solid #ffb74d;
 }
 
 /* Connection selector card */

@@ -158,7 +158,7 @@
 </template>
 
 <script>
-import { dataSourceAPI } from 'src/services/api'
+import { dataSourceAPI } from 'src/services/Api'
 
 export default {
   name: 'ConnectionForm',
