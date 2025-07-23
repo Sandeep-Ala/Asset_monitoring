@@ -1,4 +1,4 @@
-# services/connection_service.py - Updated with Parquet Support
+# services/connection_service.py - Updated with InfluxDB Support
 
 import sqlite3
 import os
@@ -8,6 +8,18 @@ from sqlalchemy.orm import Session
 import services.datasource_crud as crud
 import pandas as pd
 import pyarrow.parquet as pq
+
+# InfluxDB imports (Focus on v2)
+try:
+    from influxdb_client import InfluxDBClient, QueryApi, BucketsApi
+    from influxdb_client.rest import ApiException
+    INFLUXDB_AVAILABLE = True
+except ImportError:
+    INFLUXDB_AVAILABLE = False
+    InfluxDBClient = None
+    QueryApi = None
+    BucketsApi = None
+    ApiException = Exception
 class ConnectionTestService:
     """Service to test different database connections"""
     
@@ -42,9 +54,150 @@ class ConnectionTestService:
     
     @staticmethod
     def test_influxdb_connection(config: Dict[str, str]) -> Tuple[bool, str]:
-        """Test InfluxDB connection (placeholder for future implementation)"""
-        # TODO: Implement InfluxDB connection testing
-        return False, "InfluxDB connection testing not yet implemented"
+        """Test InfluxDB v2 connection using url, token, org"""
+        
+        if not INFLUXDB_AVAILABLE:
+            return False, "InfluxDB client library not installed. Run: pip install influxdb-client"
+        
+        try:
+            # Extract InfluxDB v2 connection parameters
+            url = config.get('url', 'http://localhost:8086')
+            token = config.get('token')
+            org = config.get('org', 'primary')
+            bucket = config.get('bucket')
+            
+            # Validate required parameters
+            if not token:
+                return False, "Token is required for InfluxDB v2 connection"
+            
+            if not bucket:
+                return False, "Bucket name is required for InfluxDB v2 connection"
+            
+            # Validate URL format
+            if not url.startswith(('http://', 'https://')):
+                return False, "URL must include protocol (http:// or https://)"
+            
+            try:
+                # Create InfluxDB v2 client
+                with InfluxDBClient(url=url, token=token, org=org, timeout=10_000) as client:
+                    
+                    # Test 1: Check if server is ready
+                    try:
+                        ready = client.ready()
+                        if not ready:
+                            return False, "InfluxDB v2 server is not ready"
+                    except ApiException as e:
+                        if e.status == 401:
+                            return False, "Authentication failed. Please check your token"
+                        elif e.status == 404:
+                            return False, f"InfluxDB server not found at {url}"
+                        else:
+                            return False, f"Server readiness check failed: {str(e)}"
+                    
+                    # Test 2: Verify organization access
+                    try:
+                        orgs_api = client.organizations_api()
+                        organizations = orgs_api.find_organizations()
+                        org_names = [o.name for o in organizations] if organizations else []
+                        
+                        if org not in org_names:
+                            return False, f"Organization '{org}' not found. Available: {org_names[:3]}"
+                        
+                    except ApiException as e:
+                        if e.status == 403:
+                            return False, "Insufficient permissions to access organizations"
+                        else:
+                            return False, f"Organization verification failed: {str(e)}"
+                    
+                    # Test 3: Verify bucket access
+                    try:
+                        buckets_api = client.buckets_api()
+                        buckets = buckets_api.find_buckets()
+                        bucket_names = [b.name for b in buckets.buckets] if buckets.buckets else []
+                        
+                        if bucket not in bucket_names:
+                            # Try to list available buckets for helpful error message
+                            available_msg = f"Available buckets: {bucket_names[:5]}" if bucket_names else "No buckets found"
+                            return False, f"Bucket '{bucket}' not found in org '{org}'. {available_msg}"
+                        
+                        # Get bucket details for success message
+                        target_bucket = next((b for b in buckets.buckets if b.name == bucket), None)
+                        bucket_id = target_bucket.id if target_bucket else "unknown"
+                        
+                    except ApiException as e:
+                        if e.status == 403:
+                            return False, "Insufficient permissions to access buckets"
+                        else:
+                            return False, f"Bucket verification failed: {str(e)}"
+                    
+                    # Test 4: Test simple query to verify read access
+                    try:
+                        query_api = client.query_api()
+                        
+                        # Simple query to test bucket access and get measurement count
+                        flux_query = f'''
+                        from(bucket: "{bucket}")
+                        |> range(start: -1h)
+                        |> limit(n: 1)
+                        '''
+                        
+                        # Execute query with timeout
+                        result = query_api.query(flux_query)
+                        
+                        # Count measurements by attempting to get schema
+                        schema_query = f'''
+                        import "influxdata/influxdb/schema"
+                        schema.measurements(bucket: "{bucket}")
+                        '''
+                        
+                        try:
+                            measurements_result = query_api.query(schema_query)
+                            measurement_count = len(list(measurements_result))
+                        except:
+                            # If schema query fails, just note data access works
+                            measurement_count = "unknown"
+                        
+                        success_msg = f"InfluxDB v2 connection successful!\n"
+                        success_msg += f"✅ Server: {url}\n"
+                        success_msg += f"✅ Organization: {org}\n" 
+                        success_msg += f"✅ Bucket: {bucket} (ID: {bucket_id[:8]}...)\n"
+                        success_msg += f"✅ Measurements: {measurement_count}"
+                        
+                        return True, success_msg
+                        
+                    except ApiException as e:
+                        if e.status == 403:
+                            return False, "Insufficient permissions to query bucket data"
+                        else:
+                            # Connection works but query failed - still considered success
+                            success_msg = f"InfluxDB v2 connection successful (query test failed: {str(e)[:100]})"
+                            return True, success_msg
+                    except Exception as e:
+                        # Connection works but query failed - still considered success
+                        success_msg = f"InfluxDB v2 connection successful (bucket accessible, query test skipped)"
+                        return True, success_msg
+                        
+            except ApiException as e:
+                if e.status == 401:
+                    return False, "Authentication failed. Please verify your token is correct and has necessary permissions"
+                elif e.status == 404:
+                    return False, f"InfluxDB server not found at {url}. Please check the URL"
+                elif e.status == 403:
+                    return False, "Access forbidden. Please check token permissions"
+                else:
+                    return False, f"InfluxDB API error: {str(e)}"
+            except Exception as e:
+                if "ConnectionError" in str(type(e)):
+                    return False, f"Cannot connect to InfluxDB server at {url}. Please check if server is running"
+                elif "timeout" in str(e).lower():
+                    return False, f"Connection timeout to {url}. Please check network connectivity"
+                else:
+                    return False, f"InfluxDB connection error: {str(e)}"
+            
+        except ValueError as e:
+            return False, f"Configuration error: {str(e)}"
+        except Exception as e:
+            return False, f"Unexpected InfluxDB connection error: {str(e)}"
     
     @staticmethod
     def test_parquet_connection(config: Dict[str, str]) -> Tuple[bool, str]:

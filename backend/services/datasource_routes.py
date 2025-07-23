@@ -1,4 +1,4 @@
-# services/datasource_routes.py - Updated with Enhanced Parquet Support
+# services/datasource_routes.py - Updated with InfluxDB v2 Support along with parquet
 
 from fastapi import Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -200,13 +200,41 @@ class DataSourceRoutes:
                 ]
             },
             "influxdb": {
-                "name": "InfluxDB",
+                "name": "InfluxDB v2",
+                "description": "Time-series database using InfluxDB v2 with token authentication",
                 "fields": [
-                    {"key": "host", "label": "Host", "type": "text", "required": True, "placeholder": "localhost"},
-                    {"key": "port", "label": "Port", "type": "number", "required": True, "placeholder": "8086"},
-                    {"key": "database", "label": "Database", "type": "text", "required": True, "placeholder": "mydb"},
-                    {"key": "username", "label": "Username", "type": "text", "required": False, "placeholder": "user"},
-                    {"key": "password", "label": "Password", "type": "password", "required": False, "placeholder": "password"}
+                    {
+                        "key": "url", 
+                        "label": "Server URL", 
+                        "type": "text", 
+                        "required": True, 
+                        "placeholder": "http://localhost:8086",
+                        "help": "Full URL including protocol (http:// or https://)"
+                    },
+                    {
+                        "key": "token", 
+                        "label": "API Token", 
+                        "type": "password", 
+                        "required": True, 
+                        "placeholder": "your-api-token-here",
+                        "help": "InfluxDB v2 API token with read/write permissions"
+                    },
+                    {
+                        "key": "org", 
+                        "label": "Organization", 
+                        "type": "text", 
+                        "required": True, 
+                        "placeholder": "primary",
+                        "help": "InfluxDB organization name"
+                    },
+                    {
+                        "key": "bucket", 
+                        "label": "Bucket Name", 
+                        "type": "text", 
+                        "required": True, 
+                        "placeholder": "asset_monitoring",
+                        "help": "InfluxDB bucket name (equivalent to database in v1)"
+                    }
                 ]
             },
             "parquet": {
@@ -228,13 +256,13 @@ class DataSourceRoutes:
     # Schema Discovery Routes
     @datasource_router.get("/connections/{connection_id}/tables", response_model=TablesResponse)
     def get_connection_tables(self, connection_id: str):
-        """Get all tables for a connection"""
+        """Get all tables/measurements for a connection"""
         success, data, message = get_schema_for_connection(self.db, connection_id)
         return TablesResponse(success=success, data=data, message=message)
 
     @datasource_router.get("/connections/{connection_id}/tables/{table_name}/columns", response_model=ColumnsResponse)
     def get_table_columns(self, connection_id: str, table_name: str):
-        """Get columns for a specific table"""
+        """Get columns/fields for a specific table/measurement"""
         success, data, message = get_schema_for_connection(self.db, connection_id, table_name)
         return ColumnsResponse(success=success, data=data, message=message)
 
@@ -263,10 +291,10 @@ class DataSourceRoutes:
         elif connection.db_type.lower() == "parquet":
             success, data, message = SchemaDiscoveryService.get_complete_schema(config, quick_mode)
         elif connection.db_type.lower() == "influxdb":
-            success, data, message = False, {}, f"InfluxDB schema discovery not yet implemented"
+            success, data, message = SchemaDiscoveryService.get_complete_schema(config, quick_mode)
         else:
             success, data, message = False, {}, f"Schema discovery not implemented for {connection.db_type}"
-        
+        3
         return SchemaResponse(success=success, data=data, message=message)
 
     @datasource_router.get("/connections/{connection_id}/quick-info")

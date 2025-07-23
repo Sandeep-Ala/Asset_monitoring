@@ -1,4 +1,4 @@
-# services/widget_routes.py - Widget Management and Time Settings APIs
+# services/widget_routes.py - Widget Management and Time Settings APIs with parquet and influx
 
 from fastapi import Depends, HTTPException
 from sqlalchemy.orm import Session

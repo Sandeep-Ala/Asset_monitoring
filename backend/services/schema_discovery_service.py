@@ -1,4 +1,5 @@
-# services/schema_discovery_service.py - Updated with Parquet Implementation
+# services/schema_discovery_service.py - COMBINED InfluxDB + Parquet + SQLite Implementation
+# Complete schema discovery service supporting all three data source types
 
 import sqlite3
 import os
@@ -9,9 +10,34 @@ from sqlalchemy.orm import Session
 import services.datasource_crud as crud
 from collections import defaultdict
 import pyarrow.parquet as pq
+import requests
+import json
+
+# InfluxDB v2 imports (with fallback handling)
+try:
+    from influxdb_client import InfluxDBClient, QueryApi
+    from influxdb_client.rest import ApiException
+    INFLUXDB_AVAILABLE = True
+    print("✅ InfluxDB client library available")
+except ImportError:
+    INFLUXDB_AVAILABLE = False
+    InfluxDBClient = None
+    QueryApi = None
+    ApiException = Exception
+    print("⚠️ InfluxDB client library not installed")
 
 class SchemaDiscoveryService:
-    """Service to discover database schema for different database types"""
+    """
+    Service to discover database schema for different database types
+    
+    COMBINED IMPLEMENTATION:
+    - InfluxDB v2 REST API with comprehensive measurement/field/tag discovery
+    - Optimized Parquet analysis with partition and column detection
+    - SQLite schema discovery with performance optimizations
+    - Cross-platform compatibility and robust error handling
+    """
+    
+    # =================== SQLITE METHODS (Enhanced from both implementations) ===================
     
     @staticmethod
     def get_sqlite_tables(config: Dict[str, str]) -> Tuple[bool, List[Dict], str]:
@@ -59,16 +85,14 @@ class SchemaDiscoveryService:
                 })
             
             conn.close()
-            return True, tables, "Tables retrieved successfully"
+            return True, tables, f"Found {len(tables)} tables"
             
-        except sqlite3.Error as e:
-            return False, [], f"SQLite error: {str(e)}"
         except Exception as e:
-            return False, [], f"Unexpected error: {str(e)}"
-    
+            return False, [], f"Error retrieving SQLite tables: {str(e)}"
+
     @staticmethod
-    def get_sqlite_columns(config: Dict[str, str], table_name: str, quick_mode: bool = False) -> Tuple[bool, List[Dict], str]:
-        """Get all columns for a specific SQLite table with performance optimizations"""
+    def get_sqlite_columns(config: Dict[str, str], table_name: str, quick_mode: bool = True) -> Tuple[bool, List[Dict], str]:
+        """Get columns for a specific SQLite table - ENHANCED"""
         try:
             db_path = config.get('database_path')
             if not db_path or not os.path.exists(db_path):
@@ -89,7 +113,7 @@ class SchemaDiscoveryService:
                 conn.close()
                 return False, [], f"Table '{table_name}' not found"
             
-            # Get column information
+            # Get table info
             cursor.execute(f"PRAGMA table_info(`{table_name}`)")
             pragma_info = cursor.fetchall()
             
@@ -108,13 +132,26 @@ class SchemaDiscoveryService:
             for col_info in pragma_info:
                 cid, name, data_type, not_null, default_value, pk = col_info
                 
-                # Initialize column data
+                # Categorize column type
+                category = "unknown"
+                if data_type.upper() in ["INTEGER", "INT"]:
+                    category = "integer"
+                elif data_type.upper() in ["REAL", "FLOAT", "DOUBLE"]:
+                    category = "float"
+                elif data_type.upper() in ["TEXT", "VARCHAR", "CHAR"]:
+                    category = "string"
+                elif data_type.upper() in ["DATETIME", "TIMESTAMP"]:
+                    category = "timestamp"
+                
                 column_data = {
                     "name": name,
-                    "data_type": data_type,
+                    "type": data_type,
+                    "data_type": data_type,  # Backward compatibility
+                    "category": category,
                     "nullable": not bool(not_null),
                     "primary_key": bool(pk),
-                    "default_value": default_value,
+                    "default": default_value,
+                    "default_value": default_value,  # Backward compatibility
                     "total_rows": total_rows
                 }
                 
@@ -124,8 +161,7 @@ class SchemaDiscoveryService:
                         "distinct_count": "Not analyzed",
                         "distinctness_ratio": 0,
                         "sample_values": [],
-                        "category": SchemaDiscoveryService._classify_column_type_simple(name, data_type),
-                        "suggested_for": []
+                        "suggested_for": SchemaDiscoveryService._get_sqlite_suggested_usage(name, data_type)
                     })
                 else:
                     # Full analysis for smaller tables
@@ -144,48 +180,359 @@ class SchemaDiscoveryService:
                         else:
                             distinctness_ratio = 0
                         
-                        # Classify column types
-                        column_category = SchemaDiscoveryService._classify_column_type(
-                            name, data_type, distinctness_ratio, sample_values
-                        )
-                        
                         column_data.update({
                             "distinct_count": distinct_count,
                             "distinctness_ratio": round(distinctness_ratio, 3),
                             "sample_values": sample_values,
-                            "category": column_category,
-                            "suggested_for": SchemaDiscoveryService._get_suggested_usage(column_category, distinctness_ratio)
+                            "suggested_for": SchemaDiscoveryService._get_suggested_usage(category, distinctness_ratio)
                         })
                         
-                    except sqlite3.Error as e:
+                    except sqlite3.Error:
                         # If analysis fails, fall back to simple classification
                         column_data.update({
                             "distinct_count": "Error",
                             "distinctness_ratio": 0,
                             "sample_values": [],
-                            "category": SchemaDiscoveryService._classify_column_type_simple(name, data_type),
-                            "suggested_for": []
+                            "suggested_for": SchemaDiscoveryService._get_sqlite_suggested_usage(name, data_type)
                         })
                 
                 columns.append(column_data)
             
             conn.close()
-            message = "Columns retrieved successfully"
+            message = f"Found {len(columns)} columns"
             if quick_mode or is_large_table:
                 message += " (quick mode - limited analysis for performance)"
             
             return True, columns, message
             
-        except sqlite3.Error as e:
-            return False, [], f"SQLite error: {str(e)}"
         except Exception as e:
-            return False, [], f"Unexpected error: {str(e)}"
+            return False, [], f"Error retrieving SQLite columns: {str(e)}"
     
-    # ---------- PARQUET IMPLEMENTATION ----------
+    # =================== INFLUXDB METHODS (Enhanced from first implementation) ===================
+    
+    @staticmethod
+    def get_influxdb_measurements_rest_api(config: Dict[str, str]) -> Tuple[bool, List[Dict], str]:
+        """Get InfluxDB v2 measurements using REST API for fast schema discovery"""
+        try:
+            print("🔍 Starting InfluxDB schema discovery...")
+            
+            # Extract InfluxDB v2 connection parameters
+            url = config.get('url', 'http://localhost:8086').rstrip('/')
+            token = config.get('token')
+            org = config.get('org', 'primary')
+            bucket = config.get('bucket')
+            
+            # Validate required parameters
+            if not token:
+                return False, [], "Token is required for InfluxDB v2 connection"
+            
+            if not bucket:
+                return False, [], "Bucket name is required for InfluxDB v2 connection"
+            
+            print(f"🔗 Connecting to InfluxDB at {url} for bucket '{bucket}'")
+            
+            # Get organization ID first
+            org_id = SchemaDiscoveryService._get_org_id(url, token, org)
+            if not org_id:
+                return False, [], f"Could not find organization '{org}'"
+            
+            # Get bucket ID
+            bucket_id = SchemaDiscoveryService._get_bucket_id(url, token, org_id, bucket)
+            if not bucket_id:
+                return False, [], f"Could not find bucket '{bucket}'"
+            
+            # Get measurements using query API (fast query)
+            measurements = SchemaDiscoveryService._get_measurements_fast(url, token, org, bucket)
+            if not measurements:
+                return False, [], "No measurements found in bucket"
+            
+            print(f"📊 Found {len(measurements)} measurements")
+            
+            # Get field and tag info for each measurement
+            enriched_measurements = []
+            for i, measurement_name in enumerate(measurements[:50]):  # Limit to 50 measurements
+                print(f"Analyzing measurement {i+1}/{min(len(measurements), 50)}: {measurement_name}")
+                
+                try:
+                    field_count, tag_count = SchemaDiscoveryService._get_measurement_schema_fast(
+                        url, token, org, bucket, measurement_name
+                    )
+                    
+                    enriched_measurements.append({
+                        "name": measurement_name,
+                        "type": "measurement",
+                        "bucket": bucket,
+                        "field_count": field_count,
+                        "tag_count": tag_count,
+                        "sample_count": "N/A"  # Skip count for performance
+                    })
+                    
+                except Exception as e:
+                    print(f"Error getting schema for {measurement_name}: {e}")
+                    enriched_measurements.append({
+                        "name": measurement_name,
+                        "type": "measurement",
+                        "bucket": bucket,
+                        "field_count": 0,
+                        "tag_count": 0,
+                        "sample_count": 0,
+                        "error": str(e)[:100]
+                    })
+            
+            return True, enriched_measurements, f"Found {len(enriched_measurements)} measurements"
+            
+        except Exception as e:
+            return False, [], f"InfluxDB REST API error: {str(e)}"
+
+    @staticmethod
+    def get_influxdb_fields_rest_api(config: Dict[str, str], measurement: str) -> Tuple[bool, List[Dict], str]:
+        """Get fields and tags for a specific InfluxDB measurement using REST API"""
+        try:
+            # Extract connection parameters
+            url = config.get('url', 'http://localhost:8086').rstrip('/')
+            token = config.get('token')
+            org = config.get('org', 'primary')
+            bucket = config.get('bucket')
+            
+            if not token or not bucket:
+                return False, [], "Token and bucket are required"
+            
+            print(f"📊 Getting fields/tags for measurement '{measurement}'")
+            
+            columns = []
+            
+            # Add timestamp first
+            columns.append({
+                "name": "_time",
+                "type": "timestamp",
+                "category": "timestamp",
+                "influx_type": "timestamp",
+                "nullable": False,
+                "measurement": measurement
+            })
+            
+            # Get field keys
+            field_query = f'''
+            import "influxdata/influxdb/schema"
+            schema.fieldKeys(bucket: "{bucket}", predicate: (r) => r._measurement == "{measurement}")
+            '''
+            
+            field_result = SchemaDiscoveryService._execute_flux_query(url, token, org, field_query)
+            field_names = set()
+            for table in field_result:
+                for record in table:
+                    if '_value' in record and record['_value']:
+                        field_names.add(record['_value'])
+            
+            # Add fields
+            for field_name in sorted(field_names):
+                columns.append({
+                    "name": field_name,
+                    "type": "number",
+                    "category": "field",
+                    "influx_type": "field",
+                    "nullable": True,
+                    "measurement": measurement
+                })
+            
+            # Get tag keys
+            tag_query = f'''
+            import "influxdata/influxdb/schema"
+            schema.tagKeys(bucket: "{bucket}", predicate: (r) => r._measurement == "{measurement}")
+            '''
+            
+            tag_result = SchemaDiscoveryService._execute_flux_query(url, token, org, tag_query)
+            tag_names = set()
+            for table in tag_result:
+                for record in table:
+                    if '_value' in record and record['_value'] and record['_value'] not in ['_measurement', '_field']:
+                        tag_names.add(record['_value'])
+            
+            # Add tags
+            for tag_name in sorted(tag_names):
+                columns.append({
+                    "name": tag_name,
+                    "type": "string",
+                    "category": "tag",
+                    "influx_type": "tag",
+                    "nullable": True,
+                    "measurement": measurement
+                })
+            
+            print(f"✅ Found {len(field_names)} fields and {len(tag_names)} tags")
+            
+            return True, columns, f"Found {len(columns)} fields/tags for measurement '{measurement}'"
+            
+        except Exception as e:
+            return False, [], f"Error retrieving InfluxDB fields: {str(e)}"
+
+    # =================== INFLUXDB HELPER METHODS ===================
+    
+    @staticmethod
+    def _get_org_id(url: str, token: str, org_name: str) -> Optional[str]:
+        """Get organization ID by name"""
+        try:
+            headers = {
+                'Authorization': f'Token {token}',
+                'Content-Type': 'application/json'
+            }
+            
+            response = requests.get(f"{url}/api/v2/orgs", headers=headers, timeout=10)
+            response.raise_for_status()
+            
+            orgs = response.json().get('orgs', [])
+            for org in orgs:
+                if org.get('name') == org_name:
+                    return org.get('id')
+            
+            return None
+            
+        except Exception as e:
+            print(f"Error getting org ID: {e}")
+            return None
+
+    @staticmethod
+    def _get_bucket_id(url: str, token: str, org_id: str, bucket_name: str) -> Optional[str]:
+        """Get bucket ID by name"""
+        try:
+            headers = {
+                'Authorization': f'Token {token}',
+                'Content-Type': 'application/json'
+            }
+            
+            response = requests.get(f"{url}/api/v2/buckets?orgID={org_id}", headers=headers, timeout=10)
+            response.raise_for_status()
+            
+            buckets = response.json().get('buckets', [])
+            for bucket in buckets:
+                if bucket.get('name') == bucket_name:
+                    return bucket.get('id')
+            
+            return None
+            
+        except Exception as e:
+            print(f"Error getting bucket ID: {e}")
+            return None
+
+    @staticmethod
+    def _get_measurements_fast(url: str, token: str, org: str, bucket: str) -> List[str]:
+        """Get all measurements using a fast Flux query"""
+        try:
+            # Use simple Flux query to get measurements
+            flux_query = f'''
+            import "influxdata/influxdb/schema"
+            schema.measurements(bucket: "{bucket}")
+            '''
+            
+            measurements = SchemaDiscoveryService._execute_flux_query(url, token, org, flux_query)
+            
+            measurement_names = []
+            for table in measurements:
+                for record in table:
+                    if '_value' in record:
+                        measurement_names.append(record['_value'])
+            
+            return list(set(measurement_names))  # Remove duplicates
+            
+        except Exception as e:
+            print(f"Error getting measurements: {e}")
+            return []
+
+    @staticmethod
+    def _get_measurement_schema_fast(url: str, token: str, org: str, bucket: str, measurement: str) -> Tuple[int, int]:
+        """Get field and tag counts for a measurement using fast queries"""
+        try:
+            # Get field keys
+            field_query = f'''
+            import "influxdata/influxdb/schema"
+            schema.fieldKeys(bucket: "{bucket}", predicate: (r) => r._measurement == "{measurement}")
+            '''
+            
+            field_result = SchemaDiscoveryService._execute_flux_query(url, token, org, field_query)
+            field_names = set()
+            for table in field_result:
+                for record in table:
+                    if '_value' in record:
+                        field_names.add(record['_value'])
+            
+            # Get tag keys
+            tag_query = f'''
+            import "influxdata/influxdb/schema"
+            schema.tagKeys(bucket: "{bucket}", predicate: (r) => r._measurement == "{measurement}")
+            '''
+            
+            tag_result = SchemaDiscoveryService._execute_flux_query(url, token, org, tag_query)
+            tag_names = set()
+            for table in tag_result:
+                for record in table:
+                    if '_value' in record and record['_value'] not in ['_measurement', '_field']:
+                        tag_names.add(record['_value'])
+            
+            return len(field_names), len(tag_names)
+            
+        except Exception as e:
+            print(f"Error getting schema for {measurement}: {e}")
+            return 0, 0
+
+    @staticmethod
+    def _execute_flux_query(url: str, token: str, org: str, query: str) -> List[List[Dict]]:
+        """Execute a Flux query via REST API and return parsed results"""
+        try:
+            headers = {
+                'Authorization': f'Token {token}',
+                'Content-Type': 'application/vnd.flux',
+                'Accept': 'application/csv'
+            }
+            
+            response = requests.post(f"{url}/api/v2/query?org={org}", headers=headers, data=query, timeout=30)
+            response.raise_for_status()
+            
+            # Parse CSV response
+            import csv
+            import io
+            
+            csv_data = response.text
+            tables = []
+            current_table = []
+            
+            for line in csv_data.split('\n'):
+                if line.startswith('#') or not line.strip():
+                    continue
+                
+                if line.startswith(',result,table'):
+                    # New table header
+                    if current_table:
+                        tables.append(current_table)
+                        current_table = []
+                    continue
+                
+                # Parse data row
+                reader = csv.reader([line])
+                for row in reader:
+                    if len(row) >= 4:  # Minimum expected columns
+                        record = {}
+                        try:
+                            record['_result'] = row[1] if len(row) > 1 else ''
+                            record['_table'] = row[2] if len(row) > 2 else ''
+                            record['_value'] = row[3] if len(row) > 3 else ''
+                            current_table.append(record)
+                        except:
+                            continue
+            
+            if current_table:
+                tables.append(current_table)
+            
+            return tables
+            
+        except Exception as e:
+            print(f"Error executing Flux query: {e}")
+            return []
+    
+    # =================== PARQUET METHODS (Optimized from second implementation) ===================
     
     @staticmethod
     def get_parquet_tables(config: Dict[str, str]) -> Tuple[bool, List[Dict], str]:
-        """Get all unique equipment tables from Parquet directory structure"""
+        """Get all unique equipment tables from Parquet directory structure - OPTIMIZED"""
         try:
             base_path = config.get('base_path')
             if not base_path or not os.path.exists(base_path):
@@ -251,10 +598,10 @@ class SchemaDiscoveryService:
             
         except Exception as e:
             return False, [], f"Error discovering parquet tables: {str(e)}"
-    
+
     @staticmethod
     def get_parquet_columns(config: Dict[str, str], table_name: str, quick_mode: bool = False) -> Tuple[bool, List[Dict], str]:
-        """Get columns for a specific parquet table (equipment type)"""
+        """Get columns for a specific parquet table (equipment type) - OPTIMIZED"""
         try:
             base_path = config.get('base_path')
             if not base_path or not os.path.exists(base_path):
@@ -288,7 +635,9 @@ class SchemaDiscoveryService:
                 if partition_col not in ['year', 'month', 'day']:  # Skip timeline partitions
                     column_data = {
                         "name": partition_col,
+                        "type": "partition_string",
                         "data_type": "partition_string",
+                        "category": "categorical_text",
                         "nullable": False,
                         "primary_key": False,
                         "default_value": None,
@@ -296,7 +645,6 @@ class SchemaDiscoveryService:
                         "distinct_count": len(values),
                         "distinctness_ratio": len(values) / len(equipment_files) if equipment_files else 0,
                         "sample_values": list(values)[:3],
-                        "category": "categorical_text",
                         "suggested_for": ["filters"],
                         "is_partition": True,
                         "partition_values": sorted(list(values))
@@ -311,7 +659,9 @@ class SchemaDiscoveryService:
                     # Quick analysis
                     column_data = {
                         "name": col_name,
+                        "type": col_dtype,
                         "data_type": col_dtype,
+                        "category": SchemaDiscoveryService._classify_parquet_column_simple(col_name, col_dtype),
                         "nullable": True,
                         "primary_key": False,
                         "default_value": None,
@@ -319,7 +669,6 @@ class SchemaDiscoveryService:
                         "distinct_count": "Not analyzed",
                         "distinctness_ratio": 0,
                         "sample_values": [],
-                        "category": SchemaDiscoveryService._classify_parquet_column_simple(col_name, col_dtype),
                         "suggested_for": SchemaDiscoveryService._get_parquet_suggested_usage(col_name, col_dtype),
                         "is_partition": False
                     }
@@ -335,7 +684,9 @@ class SchemaDiscoveryService:
                     
                     column_data = {
                         "name": col_name,
+                        "type": col_dtype,
                         "data_type": col_dtype,
+                        "category": category,
                         "nullable": non_null_count < len(df_sample),
                         "primary_key": False,
                         "default_value": None,
@@ -343,7 +694,6 @@ class SchemaDiscoveryService:
                         "distinct_count": distinct_count,
                         "distinctness_ratio": round(distinctness_ratio, 3),
                         "sample_values": sample_values,
-                        "category": category,
                         "suggested_for": SchemaDiscoveryService._get_suggested_usage(category, distinctness_ratio),
                         "is_partition": False
                     }
@@ -358,14 +708,28 @@ class SchemaDiscoveryService:
             
         except Exception as e:
             return False, [], f"Error getting parquet columns: {str(e)}"
+
+    # =================== PARQUET HELPER METHODS ===================
     
     @staticmethod
     def _discover_all_parquet_files(base_path: str) -> List[str]:
         """Discover all parquet files in the directory structure"""
         try:
             # Search pattern: base_path/**/equipment=*/dcu=*/*.parquet
-            search_pattern = os.path.join(base_path, "**", "equipment=*", "dcu=*", "*.parquet")
-            return glob.glob(search_pattern, recursive=True)
+            search_patterns = [
+                os.path.join(base_path, "**", "equipment=*", "dcu=*", "*.parquet"),
+                os.path.join(base_path, "**", "equipment=*", "*.parquet"),  # Alternative structure
+                os.path.join(base_path, "**", "*.parquet")  # Simple structure
+            ]
+            
+            all_files = []
+            for pattern in search_patterns:
+                files = glob.glob(pattern, recursive=True)
+                all_files.extend(files)
+                if files:  # If we found files with this pattern, stop searching
+                    break
+            
+            return list(set(all_files))  # Remove duplicates
         except Exception as e:
             print(f"Error discovering files: {str(e)}")
             return []
@@ -379,6 +743,14 @@ class SchemaDiscoveryService:
             for part in path_parts:
                 if part.startswith("equipment="):
                     return part.split("=")[1]
+            
+            # Fallback: try to extract from filename or directory structure
+            filename = os.path.basename(file_path)
+            if '.' in filename:
+                equipment_name = filename.split('.')[0]
+                if equipment_name and len(equipment_name) > 0:
+                    return equipment_name
+            
             return None
         except Exception:
             return None
@@ -387,8 +759,21 @@ class SchemaDiscoveryService:
     def _find_equipment_files(base_path: str, equipment_name: str) -> List[str]:
         """Find all files for a specific equipment"""
         try:
-            search_pattern = os.path.join(base_path, "**", f"equipment={equipment_name}", "dcu=*", f"{equipment_name}.parquet")
-            return glob.glob(search_pattern, recursive=True)
+            search_patterns = [
+                os.path.join(base_path, "**", f"equipment={equipment_name}", "dcu=*", f"{equipment_name}.parquet"),
+                os.path.join(base_path, "**", f"equipment={equipment_name}", "*.parquet"),
+                os.path.join(base_path, "**", f"{equipment_name}.parquet"),
+                os.path.join(base_path, "**", f"*{equipment_name}*.parquet")
+            ]
+            
+            all_files = []
+            for pattern in search_patterns:
+                files = glob.glob(pattern, recursive=True)
+                all_files.extend(files)
+                if files:  # If we found files with this pattern, stop searching
+                    break
+            
+            return list(set(all_files))  # Remove duplicates
         except Exception:
             return []
     
@@ -401,9 +786,13 @@ class SchemaDiscoveryService:
             # Split path and extract partition key=value pairs
             path_parts = file_path.split(os.sep)
             for part in path_parts:
-                if "=" in part:
-                    key, value = part.split("=", 1)
-                    partition_info[key].add(value)
+                if "=" in part and not part.startswith("."):
+                    try:
+                        key, value = part.split("=", 1)
+                        if key and value:
+                            partition_info[key].add(value)
+                    except:
+                        continue
         
         return dict(partition_info)
     
@@ -488,41 +877,32 @@ class SchemaDiscoveryService:
         # String columns
         return ["specs", "documentation"]
     
-    # ---------- EXISTING METHODS ----------
+    # =================== COMMON UTILITY METHODS ===================
     
     @staticmethod
-    def _classify_column_type(name: str, data_type: str, distinctness_ratio: float, sample_values: List[str]) -> str:
-        """Classify column into categories for UI suggestions"""
-        name_lower = name.lower()
+    def _get_sqlite_suggested_usage(col_name: str, data_type: str) -> List[str]:
+        """Get suggested usage for SQLite columns"""
+        name_lower = col_name.lower()
         data_type_lower = data_type.lower()
         
-        # Time-related columns
-        if any(keyword in name_lower for keyword in ['time', 'date', 'timestamp', 'created', 'updated']):
-            return "timestamp"
+        # Time columns
+        if any(keyword in name_lower for keyword in ['time', 'date', 'timestamp']):
+            return ["timestamp_field"]
         
         # ID columns
-        if any(keyword in name_lower for keyword in ['id', '_id', 'uuid', 'key']) or distinctness_ratio > 0.9:
-            return "identifier"
-        
-        # Boolean-like columns
-        if data_type_lower in ['boolean', 'bool'] or all(val in ['0', '1', 'true', 'false', 'True', 'False'] for val in sample_values if val):
-            return "boolean"
+        if any(keyword in name_lower for keyword in ['id', '_id', 'uuid', 'key']):
+            return ["equipment_identifier"]
         
         # Numeric columns
         if data_type_lower in ['integer', 'int', 'real', 'numeric', 'decimal', 'float', 'double']:
-            if distinctness_ratio < 0.1:  # Low distinctness suggests categorical
-                return "categorical_numeric"
-            else:
-                return "numeric"
+            return ["signals", "specs"]
         
-        # Text columns
-        if data_type_lower in ['text', 'varchar', 'char', 'string']:
-            if distinctness_ratio < 0.1:  # Low distinctness suggests categorical
-                return "categorical_text"
-            else:
-                return "text"
+        # Boolean columns
+        if data_type_lower in ['boolean', 'bool']:
+            return ["signals", "specs"]
         
-        return "unknown"
+        # String columns
+        return ["specs", "documentation"]
     
     @staticmethod
     def _get_suggested_usage(category: str, distinctness_ratio: float) -> List[str]:
@@ -546,42 +926,20 @@ class SchemaDiscoveryService:
         
         return suggestions
     
-    @staticmethod
-    def _classify_column_type_simple(name: str, data_type: str) -> str:
-        """Simplified column classification for large tables (no data analysis)"""
-        name_lower = name.lower()
-        data_type_lower = data_type.lower()
-        
-        # Time-related columns
-        if any(keyword in name_lower for keyword in ['time', 'date', 'timestamp', 'created', 'updated']):
-            return "timestamp"
-        
-        # ID columns
-        if any(keyword in name_lower for keyword in ['id', '_id', 'uuid', 'key']):
-            return "identifier"
-        
-        # Boolean-like columns
-        if data_type_lower in ['boolean', 'bool'] or any(keyword in name_lower for keyword in ['is_', 'has_', 'can_', 'flag']):
-            return "boolean"
-        
-        # Numeric columns
-        if data_type_lower in ['integer', 'int', 'real', 'numeric', 'decimal', 'float', 'double']:
-            return "numeric"
-        
-        # Text columns
-        if data_type_lower in ['text', 'varchar', 'char', 'string']:
-            return "text"
-        
-        return "unknown"
+    # =================== MAIN SCHEMA DISCOVERY METHOD ===================
     
     @staticmethod
     def get_complete_schema(config: Dict[str, str], quick_mode: bool = True) -> Tuple[bool, Dict, str]:
-        """Get complete database schema information with performance optimization"""
+        """
+        Get complete schema for any database type - COMBINED IMPLEMENTATION
+        Supports SQLite, Parquet, and InfluxDB with optimized performance
+        """
         try:
-            db_type = config.get('db_type', 'sqlite3')
+            db_type = config.get('db_type', '').lower()
+            print(f"🔍 Starting schema discovery for {db_type}")
             
-            if db_type.lower() == 'sqlite3':
-                # SQLite implementation (existing)
+            if db_type == "sqlite3":
+                # SQLite implementation
                 success, tables, message = SchemaDiscoveryService.get_sqlite_tables(config)
                 if not success:
                     return False, {}, message
@@ -626,10 +984,58 @@ class SchemaDiscoveryService:
                 if len(tables) > max_tables:
                     schema["database_info"]["note"] = f"Showing first {max_tables} tables of {len(tables)} total"
                 
-                return True, schema, "Schema retrieved successfully (optimized for performance)"
+                return True, schema, f"SQLite schema retrieved successfully. {len(analyzed_tables)} tables analyzed"
             
-            elif db_type.lower() == 'parquet':
-                # Parquet implementation (new)
+            elif db_type == "influxdb":
+                # InfluxDB v2 REST API implementation
+                success, measurements, message = SchemaDiscoveryService.get_influxdb_measurements_rest_api(config)
+                
+                if not success:
+                    return False, {}, message
+                
+                schema = {
+                    "database_info": {
+                        "type": "influxdb",
+                        "url": config.get('url'),
+                        "org": config.get('org'),
+                        "bucket": config.get('bucket'),
+                        "total_measurements": len(measurements),
+                        "analysis_mode": "quick" if quick_mode else "full"
+                    },
+                    "measurements": []  # Note: "measurements" instead of "tables" for InfluxDB
+                }
+                
+                # Get fields and tags for each measurement
+                max_measurements = 25 if quick_mode else len(measurements)
+                analyzed_measurements = measurements[:max_measurements]
+                
+                for i, measurement in enumerate(analyzed_measurements):
+                    print(f"Analyzing measurement {i+1}/{len(analyzed_measurements)}: {measurement['name']}")
+                    
+                    success, fields, _ = SchemaDiscoveryService.get_influxdb_fields_rest_api(
+                        config, measurement["name"]
+                    )
+                    if success:
+                        measurement["fields"] = fields
+                        measurement["total_fields"] = len([f for f in fields if f["category"] == "field"])
+                        measurement["total_tags"] = len([f for f in fields if f["category"] == "tag"])
+                        
+                        # Add field type summary
+                        field_types = {}
+                        for field in fields:
+                            field_category = field["category"]
+                            field_types[field_category] = field_types.get(field_category, 0) + 1
+                        measurement["field_type_summary"] = field_types
+                    
+                    schema["measurements"].append(measurement)
+                
+                if len(measurements) > max_measurements:
+                    schema["database_info"]["note"] = f"Showing first {max_measurements} measurements of {len(measurements)} total"
+                
+                return True, schema, f"InfluxDB schema retrieved successfully. {len(analyzed_measurements)} measurements analyzed"
+            
+            elif db_type == "parquet":
+                # Parquet implementation
                 success, tables, message = SchemaDiscoveryService.get_parquet_tables(config)
                 if not success:
                     return False, {}, message
@@ -638,13 +1044,13 @@ class SchemaDiscoveryService:
                     "database_info": {
                         "type": "parquet",
                         "base_path": config.get('base_path'),
-                        "total_tables": len(tables),
+                        "total_equipment_groups": len(tables),
                         "analysis_mode": "quick" if quick_mode else "full"
                     },
                     "tables": []
                 }
                 
-                # Get columns for each equipment table
+                # Get columns for each equipment group
                 for i, table in enumerate(tables):
                     print(f"Analyzing parquet table {i+1}/{len(tables)}: {table['name']}")
                     
@@ -683,42 +1089,134 @@ class SchemaDiscoveryService:
         except Exception as e:
             return False, {}, f"Error retrieving schema: {str(e)}"
     
-    # Placeholder methods for future database types
+    # =================== PERFORMANCE AND DEBUG METHODS ===================
+    
     @staticmethod
-    def get_influxdb_measurements(config: Dict[str, str]) -> Tuple[bool, List[Dict], str]:
-        """Get InfluxDB measurements (placeholder)"""
-        return False, [], "InfluxDB schema discovery not yet implemented"
+    def test_connection_schema(config: Dict[str, str]) -> Tuple[bool, Dict, str]:
+        """Test connection and get basic schema info quickly"""
+        try:
+            db_type = config.get('db_type', '').lower()
+            
+            if db_type == "sqlite3":
+                db_path = config.get('database_path')
+                if not db_path or not os.path.exists(db_path):
+                    return False, {}, "Database file not found"
+                
+                conn = sqlite3.connect(db_path)
+                cursor = conn.cursor()
+                cursor.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table'")
+                table_count = cursor.fetchone()[0]
+                conn.close()
+                
+                return True, {"type": "sqlite3", "table_count": table_count}, "SQLite connection successful"
+            
+            elif db_type == "influxdb":
+                url = config.get('url', 'http://localhost:8086').rstrip('/')
+                token = config.get('token')
+                org = config.get('org', 'primary')
+                
+                if not token:
+                    return False, {}, "Token is required"
+                
+                # Test basic connectivity
+                headers = {'Authorization': f'Token {token}'}
+                response = requests.get(f"{url}/api/v2/orgs", headers=headers, timeout=5)
+                response.raise_for_status()
+                
+                return True, {"type": "influxdb", "connection": "successful"}, "InfluxDB connection successful"
+            
+            elif db_type == "parquet":
+                base_path = config.get('base_path')
+                if not base_path or not os.path.exists(base_path):
+                    return False, {}, "Base path not found"
+                
+                # Quick file count
+                parquet_files = glob.glob(os.path.join(base_path, "**", "*.parquet"), recursive=True)
+                file_count = len(parquet_files)
+                
+                return True, {"type": "parquet", "file_count": file_count}, "Parquet path accessible"
+            
+            else:
+                return False, {}, f"Unsupported database type: {db_type}"
+                
+        except Exception as e:
+            return False, {}, f"Connection test failed: {str(e)}"
+    
+    @staticmethod
+    def get_schema_summary(config: Dict[str, str]) -> Tuple[bool, Dict, str]:
+        """Get a quick schema summary without detailed analysis"""
+        try:
+            success, schema, message = SchemaDiscoveryService.get_complete_schema(config, quick_mode=True)
+            
+            if not success:
+                return False, {}, message
+            
+            # Create summary
+            db_info = schema.get("database_info", {})
+            db_type = db_info.get("type", "unknown")
+            
+            if db_type == "influxdb":
+                measurements = schema.get("measurements", [])
+                summary = {
+                    "type": "influxdb",
+                    "total_measurements": len(measurements),
+                    "total_fields": sum(m.get("total_fields", 0) for m in measurements),
+                    "total_tags": sum(m.get("total_tags", 0) for m in measurements),
+                    "sample_measurements": [m["name"] for m in measurements[:5]]
+                }
+            else:
+                tables = schema.get("tables", [])
+                summary = {
+                    "type": db_type,
+                    "total_tables": len(tables),
+                    "total_columns": sum(t.get("total_columns", 0) for t in tables),
+                    "sample_tables": [t["name"] for t in tables[:5]]
+                }
+            
+            return True, summary, "Schema summary generated successfully"
+            
+        except Exception as e:
+            return False, {}, f"Error generating schema summary: {str(e)}"
+
+# =================== CONNECTION-BASED SCHEMA DISCOVERY ===================
 
 def get_schema_for_connection(db: Session, connection_id: str, table_name: str = None):
-    """Get schema information for a specific connection"""
-    # Get connection
-    connection = crud.get_data_connection_by_id(db, connection_id)
-    if not connection:
-        return False, {}, "Connection not found"
-    
-    if connection.status != "active":
-        return False, {}, "Connection is not active"
-    
-    # Get connection config
-    config = crud.get_connection_config_dict(db, connection_id)
-    if not config:
-        return False, {}, "Connection configuration not found"
-    
-    # Add db_type to config for schema discovery
-    config['db_type'] = connection.db_type
-    
-    # Route to appropriate schema discovery method
-    if connection.db_type.lower() == "sqlite3":
-        if table_name:
-            return SchemaDiscoveryService.get_sqlite_columns(config, table_name)
+    """Get schema information for a specific connection - ENHANCED"""
+    try:
+        # Get connection
+        connection = crud.get_data_connection_by_id(db, connection_id)
+        if not connection:
+            return False, {}, "Connection not found"
+        
+        if connection.status != "active":
+            return False, {}, "Connection is not active"
+        
+        # Get connection config
+        config = crud.get_connection_config_dict(db, connection_id)
+        if not config:
+            return False, {}, "Connection configuration not found"
+        
+        # Add db_type to config for schema discovery
+        config['db_type'] = connection.db_type
+        
+        # Route to appropriate schema discovery method
+        if connection.db_type.lower() == "sqlite3":
+            if table_name:
+                return SchemaDiscoveryService.get_sqlite_columns(config, table_name)
+            else:
+                return SchemaDiscoveryService.get_sqlite_tables(config)
+        elif connection.db_type.lower() == "parquet":
+            if table_name:
+                return SchemaDiscoveryService.get_parquet_columns(config, table_name)
+            else:
+                return SchemaDiscoveryService.get_parquet_tables(config)
+        elif connection.db_type.lower() == "influxdb":
+            if table_name:
+                return SchemaDiscoveryService.get_influxdb_fields_rest_api(config, table_name)
+            else:
+                return SchemaDiscoveryService.get_influxdb_measurements_rest_api(config)
         else:
-            return SchemaDiscoveryService.get_sqlite_tables(config)
-    elif connection.db_type.lower() == "parquet":
-        if table_name:
-            return SchemaDiscoveryService.get_parquet_columns(config, table_name)
-        else:
-            return SchemaDiscoveryService.get_parquet_tables(config)
-    elif connection.db_type.lower() == "influxdb":
-        return SchemaDiscoveryService.get_influxdb_measurements(config)
-    else:
-        return False, {}, f"Unsupported database type: {connection.db_type}"
+            return False, {}, f"Unsupported database type: {connection.db_type}"
+            
+    except Exception as e:
+        return False, {}, f"Schema discovery error: {str(e)}"
