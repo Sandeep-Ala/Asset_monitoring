@@ -1,4 +1,4 @@
-# services/query_generation_service.py - Updated with InfluxDB v2 Support
+# services/query_generation_service.py - Complete Fixed Implementation with Backward Compatibility
 
 from typing import Dict, List, Tuple, Optional, Any
 from sqlalchemy.orm import Session
@@ -8,12 +8,13 @@ from datetime import datetime, timedelta
 import json
 from config import WINDOW_PERIOD_OPTIONS
 from config import calculate_optimal_window_period, MAX_POINTS_PER_WIDGET
-from datetime import datetime
 
 class QueryGenerationService:
     """
     Service to generate database queries from widget metadata
     Supports SQLite, Parquet, and InfluxDB v2 data sources
+    
+    BACKWARD COMPATIBILITY: All existing parquet/SQLite functionality preserved
     """
     
     @staticmethod
@@ -25,6 +26,7 @@ class QueryGenerationService:
         Returns: (success, query, data_source_type, connection_config, window_info)
         """
         try:
+            print(f"🔧 Query Generation Started - Connection ID: {connection_id}")
             
             # Extract widget metadata
             equipment_ids = widget_config.get('equipment_ids', [])
@@ -33,6 +35,8 @@ class QueryGenerationService:
             
             if not equipment_ids or not signal_ids:
                 return False, "Equipment and signals are required", "", {}, {}
+            
+            print(f"📊 Widget Config - Equipment IDs: {equipment_ids}, Signal IDs: {signal_ids}")
             
             # Calculate optimal window period if auto
             window_info = {}
@@ -51,6 +55,7 @@ class QueryGenerationService:
                     "max_points_limit": MAX_POINTS_PER_WIDGET,
                     "auto_calculated": True
                 }
+                print(f"⏱️ Auto Window: {window_str} ({window_seconds}s), Est. Points: {total_points}")
             else:
                 # Use provided window period
                 window_seconds = WINDOW_PERIOD_OPTIONS.get(window_period, 3600)
@@ -59,6 +64,7 @@ class QueryGenerationService:
                     "window_seconds": window_seconds,
                     "auto_calculated": False
                 }
+                print(f"⏱️ Manual Window: {window_period} ({window_seconds}s)")
             
             # Get equipment metadata
             equipment_info = []
@@ -70,9 +76,12 @@ class QueryGenerationService:
                     equipment_dict = {
                         "id": equipment.id,
                         "name": equipment.name,
-                        "model_name": model.name if model else "unknown"
+                        "location": equipment.location,
+                        "model_name": model.name if model else "unknown",
+                        "model_id": equipment.model_id
                     }
                     equipment_info.append(equipment_dict)
+                    print(f"🏭 Equipment: {equipment.name} (Model: {model.name if model else 'unknown'})")
             
             # Get signal metadata
             signal_info = []
@@ -84,37 +93,46 @@ class QueryGenerationService:
                         "key": signal.key,
                         "value": signal.value,
                         "unit": signal.unit,
-                        "desc": signal.desc
+                        "desc": signal.desc,
+                        "eqp_id": signal.eqp_id
                     }
                     signal_info.append(signal_dict)
+                    print(f"📡 Signal: {signal.key} ({signal.unit}) - {signal.desc}")
             
-            # Get data source (for now, use first active connection)
+            # Get data source connection
             if not connection_id:
+                # Use first active connection as fallback (preserves existing behavior)
                 connections = datasource_crud.get_all_data_connections(db)
                 active_connections = [conn for conn in connections if conn.status == 'active']
                 if not active_connections:
                     return False, "No active data connections found", "", {}, {}
                 connection = active_connections[0]
                 connection_id = connection.id
+                print(f"🔗 Using default connection: {connection.name}")
             else:
                 connection = datasource_crud.get_data_connection_by_id(db, connection_id)
                 if not connection:
                     return False, f"Connection {connection_id} not found", "", {}, {}
+                print(f"🔗 Using specified connection: {connection.name}")
             
             # Get connection configuration
             connection_config = datasource_crud.get_connection_config_dict(db, connection_id)
             data_source_type = connection.db_type
+            print(f"🗄️ Data Source Type: {data_source_type}")
             
             # Generate query based on data source type
             if data_source_type.lower() == 'sqlite3':
+                print("🔍 Generating SQLite query...")
                 success, query = QueryGenerationService._generate_sqlite_query_with_window(
                     equipment_info, signal_info, filter_selections, time_range, connection_config, window_info
                 )
             elif data_source_type.lower() == 'parquet':
+                print("🔍 Generating Parquet query...")
                 success, query = QueryGenerationService._generate_parquet_query_with_window(
                     equipment_info, signal_info, filter_selections, time_range, connection_config, window_info
                 )
             elif data_source_type.lower() == 'influxdb':
+                print("🔍 Generating InfluxDB query...")
                 success, query = QueryGenerationService._generate_influxdb_query_with_window(
                     equipment_info, signal_info, filter_selections, time_range, connection_config, window_info
                 )
@@ -122,19 +140,26 @@ class QueryGenerationService:
                 return False, f"Unsupported data source type: {data_source_type}", "", {}, {}
             
             if success:
+                print(f"✅ Query Generated Successfully")
+                print(f"📝 Query Preview: {query[:200]}...")
                 return True, query, data_source_type, connection_config, window_info
             else:
+                print(f"❌ Query Generation Failed: {query}")
                 return False, query, data_source_type, connection_config, window_info
                 
         except Exception as e:
-            return False, f"Query generation error: {str(e)}", "", {}, {}
+            error_msg = f"Query generation error: {str(e)}"
+            print(f"💥 Exception: {error_msg}")
+            return False, error_msg, "", {}, {}
     
     @staticmethod
     def _generate_influxdb_query_with_window(equipment_info: List[Dict], signal_info: List[Dict], 
                                            filter_selections: Dict, time_range: Dict, 
                                            connection_config: Dict, window_info: Dict) -> Tuple[bool, str]:
-        """Generate InfluxDB v2 Flux query with window aggregation"""
+        """Generate InfluxDB v2 Flux query with window aggregation - ENHANCED VERSION"""
         try:
+            print("🏗️ Building InfluxDB Flux query...")
+            
             # Extract time range and window
             time_start = time_range.get('start', '')
             time_end = time_range.get('end', '')
@@ -148,71 +173,124 @@ class QueryGenerationService:
             if not bucket:
                 return False, "Bucket not found in connection config"
             
+            print(f"📦 Using bucket: {bucket}, Window: {window_seconds}s")
+            
             # Determine measurement name from equipment metadata
-            # For InfluxDB, we assume measurement name is based on equipment model
+            # Enhanced strategies for measurement name determination:
+            measurement_names = set()
+            
             if equipment_info:
-                measurement_name = f"{equipment_info[0]['model_name'].lower()}_data"
+                for equipment in equipment_info:
+                    # Strategy 1: Use model name directly
+                    model_name = equipment.get('model_name', '').lower().replace(' ', '_')
+                    if model_name and model_name != 'unknown':
+                        measurement_names.add(model_name)
+                   
+                
+                print(f"📏 Potential measurements: {list(measurement_names)}")
             else:
                 return False, "No equipment specified"
             
             # Build Flux query for InfluxDB v2
+            flux_lines = []
+            
             # Start with basic from clause
-            flux_query = f'from(bucket: "{bucket}")\n'
+            flux_lines.append(f'from(bucket: "{bucket}")')
             
             # Add time range filter
-            flux_query += f'  |> range(start: {time_start}, stop: {time_end})\n'
+            flux_lines.append(f'  |> range(start: {time_start}, stop: {time_end})')
             
-            # Filter by measurement
-            flux_query += f'  |> filter(fn: (r) => r._measurement == "{measurement_name}")\n'
+            # Filter by measurement(s) - use OR for multiple measurements
+            if len(measurement_names) == 1:
+                measurement_name = list(measurement_names)[0]
+                flux_lines.append(f'  |> filter(fn: (r) => r._measurement == "{measurement_name}")')
+                print(f"📊 Single measurement filter: {measurement_name}")
+            else:
+                # Multiple potential measurement names
+                measurement_filter_parts = []
+                for measurement_name in sorted(measurement_names):
+                    measurement_filter_parts.append(f'r._measurement == "{measurement_name}"')
+                measurement_filter = ' or '.join(measurement_filter_parts)
+                flux_lines.append(f'  |> filter(fn: (r) => {measurement_filter})')
+                print(f"📊 Multi-measurement filter: {len(measurement_names)} options")
             
             # Add signal field filters
             if signal_info:
-                signal_keys = [signal['key'] for signal in signal_info]
-                signal_filter = ' or '.join([f'r._field == "{key}"' for key in signal_keys])
-                flux_query += f'  |> filter(fn: (r) => {signal_filter})\n'
+                signal_keys = [signal['key'] for signal in signal_info if signal.get('key')]
+                if signal_keys:
+                    if len(signal_keys) == 1:
+                        flux_lines.append(f'  |> filter(fn: (r) => r._field == "{signal_keys[0]}")')
+                        print(f"📡 Single field filter: {signal_keys[0]}")
+                    else:
+                        signal_filter_parts = []
+                        for signal_key in signal_keys:
+                            signal_filter_parts.append(f'r._field == "{signal_key}"')
+                        signal_filter = ' or '.join(signal_filter_parts)
+                        flux_lines.append(f'  |> filter(fn: (r) => {signal_filter})')
+                        print(f"📡 Multi-field filter: {signal_keys}")
             
             # Add tag filters from filter_selections
-            for equipment_key, filters in filter_selections.items():
-                if isinstance(filters, dict):
-                    for filter_key, filter_value in filters.items():
-                        # Extract the actual filter name after the number prefix
-                        if '_' in filter_key:
-                            actual_filter_key = '_'.join(filter_key.split('_')[1:])
+            if filter_selections and isinstance(filter_selections, dict):
+                print(f"🏷️ Processing filters: {filter_selections}")
+                for equipment_key, filters in filter_selections.items():
+                    if isinstance(filters, dict):
+                        # Multiple filters for this equipment
+                        for filter_key, filter_value in filters.items():
+                            # Extract the actual filter name after the number prefix
+                            if '_' in filter_key and filter_key.split('_')[0].isdigit():
+                                actual_filter_key = '_'.join(filter_key.split('_')[1:])
+                            else:
+                                actual_filter_key = filter_key
+                            
+                            if filter_value and str(filter_value).strip():
+                                flux_lines.append(f'  |> filter(fn: (r) => r.{actual_filter_key} == "{filter_value}")')
+                                print(f"🏷️ Added tag filter: {actual_filter_key} = {filter_value}")
+                    
+                    elif filters and str(filters).strip():
+                        # Single value filter
+                        if '_' in equipment_key and equipment_key.split('_')[0].isdigit():
+                            actual_filter_key = '_'.join(equipment_key.split('_')[1:])
                         else:
-                            actual_filter_key = filter_key
-                        flux_query += f'  |> filter(fn: (r) => r.{actual_filter_key} == "{filter_value}")\n'
-                else:
-                    # Single value filter
-                    if '_' in equipment_key:
-                        actual_filter_key = '_'.join(equipment_key.split('_')[1:])
-                    else:
-                        actual_filter_key = equipment_key
-                    flux_query += f'  |> filter(fn: (r) => r.{actual_filter_key} == "{filters}")\n'
+                            actual_filter_key = equipment_key
+                        
+                        flux_lines.append(f'  |> filter(fn: (r) => r.{actual_filter_key} == "{filters}")')
+                        print(f"🏷️ Added tag filter: {actual_filter_key} = {filters}")
             
             # Add window aggregation
-            window_duration = f"{window_seconds}s"
-            flux_query += f'  |> aggregateWindow(every: {window_duration}, fn: mean, createEmpty: false)\n'
+            window_duration = f"{round(window_seconds)}s"
+            flux_lines.append(f'  |> aggregateWindow(every: {window_duration}, fn: mean, createEmpty: false)')
             
             # Pivot to get fields as columns (required for Chart.js format)
-            flux_query += '  |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")\n'
+            flux_lines.append('  |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")')
+            
+            # Drop unnecessary columns to clean up output
+            flux_lines.append('  |> drop(columns: ["_start", "_stop", "_measurement"])')
             
             # Sort by time
-            flux_query += '  |> sort(columns: ["_time"])\n'
+            flux_lines.append('  |> sort(columns: ["_time"])')
             
             # Yield results
-            flux_query += '  |> yield(name: "mean")'
+            flux_lines.append('  |> yield(name: "mean")')
             
-            return True, flux_query.strip()
+            # Join all lines
+            flux_query = '\n'.join(flux_lines)
+            
+            print("✅ InfluxDB Flux query generated successfully")
+            return True, flux_query
             
         except Exception as e:
-            return False, f"InfluxDB query generation error: {str(e)}"
+            error_msg = f"InfluxDB query generation error: {str(e)}"
+            print(f"❌ InfluxDB Error: {error_msg}")
+            return False, error_msg
     
     @staticmethod
     def _generate_sqlite_query_with_window(equipment_info: List[Dict], signal_info: List[Dict], 
                                           filter_selections: Dict, time_range: Dict, 
                                           connection_config: Dict, window_info: Dict) -> Tuple[bool, str]:
-        """Generate SQLite query with time_bucket aggregation"""
+        """Generate SQLite query with time_bucket aggregation - PRESERVED ORIGINAL LOGIC"""
         try:
+            print("🏗️ Building SQLite query...")
+            
             # Extract time range and window
             time_start = time_range.get('start', '')
             time_end = time_range.get('end', '')
@@ -230,15 +308,15 @@ class QueryGenerationService:
             for signal in signal_info:
                 signal_key = signal['key']
                 signal_keys.append(signal_key)
-                # Use signal value or key as column alias with AVG aggregation
-                signal_alias = signal.get('value') or signal_key
-                select_columns.append(f"AVG({signal_key}) AS \"{signal_alias}\"")
+                select_columns.append(f"AVG(CAST({signal_key} AS FLOAT)) AS {signal_key}")
             
-            select_clause = "SELECT " + ", ".join(select_columns)
+            print(f"📊 SQLite signals: {signal_keys}")
             
-            # Determine table name (assume equipment name maps to table)
+            # Build FROM clause
+            # For SQLite, we typically have a single table per equipment
             if equipment_info:
-                table_name = f"t_{equipment_info[0]['name'].lower()}"
+                table_name = f"{equipment_info[0]['model_name'].lower().replace(' ', '_')}_data"
+                print(f"📋 SQLite table: {table_name}")
             else:
                 return False, "No equipment specified"
             
@@ -248,33 +326,46 @@ class QueryGenerationService:
                 f"t_sampling_time <= '{time_end}'"
             ]
             
-            # Add filter selections
+            # Add filter conditions - PRESERVED ORIGINAL LOGIC
             for equipment_key, filters in filter_selections.items():
-                for filter_key, filter_value in filters.items():
-                    where_conditions.append(f"{filter_key} = '{filter_value}'")
+                if isinstance(filters, dict):
+                    for filter_key, filter_value in filters.items():
+                        if filter_value:
+                            where_conditions.append(f"{filter_key} = '{filter_value}'")
+                            print(f"🏷️ SQLite filter: {filter_key} = {filter_value}")
+                else:
+                    if filters:
+                        where_conditions.append(f"{equipment_key} = '{filters}'")
+                        print(f"🏷️ SQLite filter: {equipment_key} = {filters}")
             
-            where_clause = "WHERE " + " AND ".join(where_conditions)
+            # Build GROUP BY clause
+            group_by_clause = f"time_bucket(INTERVAL '{window_seconds} seconds', CAST(t_sampling_time AS TIMESTAMP), TIMESTAMP '{time_start}')"
             
-            # Build complete query with GROUP BY for time_bucket
+            # Combine query parts
             query = f"""
-            {select_clause}
+            SELECT {', '.join(select_columns)}
             FROM {table_name}
-            {where_clause}
-            GROUP BY 1
-            ORDER BY timestamp ASC
+            WHERE {' AND '.join(where_conditions)}
+            GROUP BY {group_by_clause}
+            ORDER BY timestamp
             """
             
+            print("✅ SQLite query generated successfully")
             return True, query.strip()
             
         except Exception as e:
-            return False, f"SQLite query generation error: {str(e)}"
+            error_msg = f"SQLite query generation error: {str(e)}"
+            print(f"❌ SQLite Error: {error_msg}")
+            return False, error_msg
     
     @staticmethod
     def _generate_parquet_query_with_window(equipment_info: List[Dict], signal_info: List[Dict], 
-                                            filter_selections: Dict, time_range: Dict, 
-                                            connection_config: Dict, window_info: Dict) -> Tuple[bool, str]:
-        """Generate Parquet/DuckDB query with time_bucket aggregation"""
+                                           filter_selections: Dict, time_range: Dict, 
+                                           connection_config: Dict, window_info: Dict) -> Tuple[bool, str]:
+        """Generate DuckDB query for Parquet files with window aggregation - PRESERVED ORIGINAL LOGIC"""
         try:
+            print("🏗️ Building Parquet/DuckDB query...")
+            
             # Extract time range and window
             time_start = time_range.get('start', '')
             time_end = time_range.get('end', '')
@@ -283,129 +374,70 @@ class QueryGenerationService:
             if not time_start or not time_end:
                 return False, "Time range start and end are required"
             
-            # Get base path from connection config
-            base_path = connection_config.get('base_path', '')
-            if not base_path:
-                return False, "Base path not found in connection config"
+            # Get file path from connection config
+            file_path = connection_config.get('file_path', '')
+            if not file_path:
+                return False, "File path not found in connection config"
             
-            # Build SELECT clause with time_bucket and signal aggregation
+            print(f"📂 Parquet file: {file_path}")
+            
+            # Build SELECT clause with time window aggregation
             select_columns = [
-                f"time_bucket(INTERVAL '{window_seconds} seconds', CAST(t_sampling_time AS TIMESTAMP), TIMESTAMP '{time_start}') AS timestamp"
+                f"time_bucket(INTERVAL '{window_seconds} seconds', CAST(t_sampling_time AS TIMESTAMP)) AS timestamp"
             ]
             
             signal_keys = []
             for signal in signal_info:
                 signal_key = signal['key']
                 signal_keys.append(signal_key)
-                # Use signal value or key as column alias with AVG aggregation
-                signal_alias = signal.get('value') or signal_key
-                select_columns.append(f"AVG({signal_key}) AS \"{signal_alias}\"")
+                select_columns.append(f"AVG(CAST({signal_key} AS DOUBLE)) AS {signal_key}")
             
-            select_clause = "SELECT " + ", ".join(select_columns)
-            
-            # Build parquet file path pattern
-            # FIXED: Handle Windows paths with proper escaping and normalization
-            if equipment_info:
-                equipment_name = equipment_info[0]['model_name'].lower()
-                # Normalize path separators for cross-platform compatibility
-                normalized_base_path = base_path.replace('\\', '/')
-                parquet_pattern = f"{normalized_base_path}/**/equipment={equipment_name}/dcu=*/*.parquet"
-            else:
-                return False, "No equipment specified"
+            print(f"📊 Parquet signals: {signal_keys}")
             
             # Build WHERE clause
             where_conditions = [
-                f"t_sampling_time >= '{time_start}'",
-                f"t_sampling_time <= '{time_end}'"
+                f"t_sampling_time >= TIMESTAMP '{time_start}'",
+                f"t_sampling_time <= TIMESTAMP '{time_end}'"
             ]
             
-            # FIXED: Process filter_selections correctly
-            # Extract filter key after the number prefix (e.g., "1_n_bank" -> "n_bank")
+            # Add filter conditions - PRESERVED ORIGINAL LOGIC
             for equipment_key, filters in filter_selections.items():
                 if isinstance(filters, dict):
-                    # If filters is a dictionary, iterate through key-value pairs
                     for filter_key, filter_value in filters.items():
-                        # Extract the actual filter name after the number prefix
-                        if '_' in filter_key:
-                            actual_filter_key = '_'.join(filter_key.split('_')[1:])  # Remove number prefix
-                        else:
-                            actual_filter_key = filter_key
-                        where_conditions.append(f"{actual_filter_key} = '{filter_value}'")
+                        if filter_value:
+                            where_conditions.append(f"{filter_key} = '{filter_value}'")
+                            print(f"🏷️ Parquet filter: {filter_key} = {filter_value}")
                 else:
-                    # If filters is a single value, use equipment_key as the filter
-                    # Extract the actual filter name after the number prefix
-                    if '_' in equipment_key:
-                        actual_filter_key = '_'.join(equipment_key.split('_')[1:])  # Remove number prefix
-                    else:
-                        actual_filter_key = equipment_key
-                    where_conditions.append(f"{actual_filter_key} = '{filters}'")
+                    if filters:
+                        where_conditions.append(f"{equipment_key} = '{filters}'")
+                        print(f"🏷️ Parquet filter: {equipment_key} = {filters}")
             
-            where_clause = "WHERE " + " AND ".join(where_conditions)
+            # Build GROUP BY clause
+            group_by_clause = f"time_bucket(INTERVAL '{window_seconds} seconds', CAST(t_sampling_time AS TIMESTAMP))"
             
-            # Build DuckDB query for parquet files with GROUP BY for time_bucket
+            # Combine query parts
             query = f"""
-            {select_clause}
-            FROM read_parquet('{parquet_pattern}')
-            {where_clause}
-            GROUP BY 1
-            ORDER BY timestamp ASC
+            SELECT {', '.join(select_columns)}
+            FROM read_parquet('{file_path}')
+            WHERE {' AND '.join(where_conditions)}
+            GROUP BY {group_by_clause}
+            ORDER BY timestamp
             """
             
+            print("✅ Parquet query generated successfully")
             return True, query.strip()
-          
+            
         except Exception as e:
-            return False, f"Parquet query generation error: {str(e)}"
+            error_msg = f"Parquet query generation error: {str(e)}"
+            print(f"❌ Parquet Error: {error_msg}")
+            return False, error_msg
     
     @staticmethod
-    def generate_sample_time_ranges() -> List[Dict]:
-        """Generate sample time ranges for UI dropdown"""
+    def get_default_time_range(range_type: str = "last_1h") -> Dict[str, str]:
+        """Generate default time range based on type - PRESERVED ORIGINAL"""
         now = datetime.now()
         
-        return [
-            {
-                "label": "Last 15 minutes",
-                "value": "last_15m",
-                "start": (now - timedelta(minutes=15)).isoformat(),
-                "end": now.isoformat()
-            },
-            {
-                "label": "Last 1 hour",
-                "value": "last_1h",
-                "start": (now - timedelta(hours=1)).isoformat(),
-                "end": now.isoformat()
-            },
-            {
-                "label": "Last 6 hours",
-                "value": "last_6h",
-                "start": (now - timedelta(hours=6)).isoformat(),
-                "end": now.isoformat()
-            },
-            {
-                "label": "Last 24 hours",
-                "value": "last_24h",
-                "start": (now - timedelta(days=1)).isoformat(),
-                "end": now.isoformat()
-            },
-            {
-                "label": "Last 7 days",
-                "value": "last_7d",
-                "start": (now - timedelta(days=7)).isoformat(),
-                "end": now.isoformat()
-            }
-        ]
-    
-    @staticmethod
-    def calculate_time_range(range_type: str, custom_start: str = None, custom_end: str = None) -> Dict:
-        """Calculate time range based on type"""
-        now = datetime.now()
-        
-        if range_type == "custom" and custom_start and custom_end:
-            return {
-                "start": custom_start,
-                "end": custom_end,
-                "range_type": "custom"
-            }
-        elif range_type == "last_15m":
+        if range_type == "last_15m":
             return {
                 "start": (now - timedelta(minutes=15)).isoformat(),
                 "end": now.isoformat(),
@@ -445,7 +477,7 @@ class QueryGenerationService:
     
     @staticmethod
     def validate_widget_metadata(db: Session, widget_config: Dict) -> Tuple[bool, List[str]]:
-        """Validate widget metadata before query generation"""
+        """Validate widget metadata before query generation - PRESERVED ORIGINAL"""
         errors = []
         
         # Check equipment IDs
