@@ -205,7 +205,7 @@ class QueryGenerationService:
             if equipment_info:
                 for equipment in equipment_info:
                     # Strategy 1: Use model name directly
-                    model_name = equipment.get('model_name', '').lower().replace(' ', '_')
+                    model_name = equipment.get('model_name', '').replace(' ', '_')
                     if model_name and model_name != 'unknown':
                         measurement_names.add(model_name)
                 
@@ -241,12 +241,12 @@ class QueryGenerationService:
                 signal_keys = [signal['key'] for signal in signal_info if signal.get('key')]
                 if signal_keys:
                     if len(signal_keys) == 1:
-                        flux_lines.append(f'  |> filter(fn: (r) => r._field == "{signal_keys[0]}")')
+                        flux_lines.append(f'  |> filter(fn: (r) => r["_field"] == "{signal_keys[0]}")')
                         print(f"📡 Single field filter: {signal_keys[0]}")
                     else:
                         signal_filter_parts = []
                         for signal_key in signal_keys:
-                            signal_filter_parts.append(f'r._field == "{signal_key}"')
+                            signal_filter_parts.append(f'r["_field"] == "{signal_key}"')
                         signal_filter = ' or '.join(signal_filter_parts)
                         flux_lines.append(f'  |> filter(fn: (r) => {signal_filter})')
                         print(f"📡 Multi-field filter: {signal_keys}")
@@ -265,7 +265,7 @@ class QueryGenerationService:
                                 actual_filter_key = filter_key
                             
                             if filter_value and str(filter_value).strip():
-                                flux_lines.append(f'  |> filter(fn: (r) => r.{actual_filter_key} == "{filter_value}")')
+                                flux_lines.append(f'  |> filter(fn: (r) => r["{actual_filter_key}"] == "{filter_value}")')
                                 print(f"🏷️ Added tag filter: {actual_filter_key} = {filter_value}")
                     
                     elif filters and str(filters).strip():
@@ -275,7 +275,7 @@ class QueryGenerationService:
                         else:
                             actual_filter_key = equipment_key
                         
-                        flux_lines.append(f'  |> filter(fn: (r) => r.{actual_filter_key} == "{filters}")')
+                        flux_lines.append(f'  |> filter(fn: (r) => r["{actual_filter_key}"] == "{filters}")')
                         print(f"🏷️ Added tag filter: {actual_filter_key} = {filters}")
             
             # Add window aggregation
