@@ -532,7 +532,7 @@ class DataRetrievalService:
             params = {'org': org}
             
             print(f"🔗 REST API URL: {query_url}")
-            print(f"📋 Query length: {len(query)} characters")
+            print(f"📋 Query length: {(query)} characters")
             
             # Execute query
             response = requests.post(

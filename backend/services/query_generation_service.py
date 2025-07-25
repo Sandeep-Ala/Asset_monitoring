@@ -225,15 +225,15 @@ class QueryGenerationService:
             # Filter by measurement(s) - use OR for multiple measurements
             if len(measurement_names) == 1:
                 measurement_name = list(measurement_names)[0]
-                flux_lines.append(f'  |> filter(fn: (r) => r._measurement == "{measurement_name}")')
+                flux_lines.append(f'  |> filter(fn: (r) => r["_measurement"] == "{measurement_name}")')
                 print(f"📊 Single measurement filter: {measurement_name}")
             else:
                 # Multiple potential measurement names
                 measurement_filter_parts = []
                 for measurement_name in sorted(measurement_names):
-                    measurement_filter_parts.append(f'r._measurement == "{measurement_name}"')
+                    measurement_filter_parts.append(f'r["_measurement"] == "{measurement_name}"')
                 measurement_filter = ' or '.join(measurement_filter_parts)
-                flux_lines.append(f'  |> filter(fn: (r) => {measurement_filter})')
+                flux_lines.append(f'  |> filter(fn: (r) => r["{measurement_filter}"])')
                 print(f"📊 Multi-measurement filter: {len(measurement_names)} options")
             
             # Add signal field filters

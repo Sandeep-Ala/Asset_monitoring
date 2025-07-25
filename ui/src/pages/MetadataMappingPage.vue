@@ -169,7 +169,7 @@
 </template>
 
 <script>
-import { dataSourceAPI, metaAPI } from 'src/services/api'
+import { dataSourceAPI, metaAPI } from 'src/services/Api'
 import SourcePanel from 'components/SourcePanel.vue'
 import TargetPanel from 'components/TargetPanel.vue'
 
