@@ -1,35 +1,20 @@
-<!-- components/DataSourceManager.vue -->
+<!-- components/DataSourceManager.vue - Fixed Connection Creation Flow -->
 <template>
   <div class="datasource-manager">
-    <!-- Tab Navigation -->
-    <q-tabs
-      v-model="activeTab"
-      dense
-      class="text-grey"
-      active-color="primary"
-      indicator-color="primary"
-      align="justify"
-      narrow-indicator
-    >
+    <q-tabs v-model="activeTab" dense class="text-grey" active-color="primary" indicator-color="primary" align="justify">
       <q-tab name="connections" label="Connections" icon="link" />
       <q-tab name="schema" label="Schema Discovery" icon="schema" />
     </q-tabs>
 
-    <q-separator />
-
-    <!-- Tab Panels -->
     <q-tab-panels v-model="activeTab" animated>
       <!-- Connections Tab -->
-      <q-tab-panel name="connections" class="q-pa-none">
-        <div class="row q-gutter-md q-pa-md">
+      <q-tab-panel name="connections">
+        <div class="row q-gutter-md">
           <!-- Connection Form -->
-          <div class="col-12 col-md-4">
+          <div class="col-12 col-md-6">
             <q-card>
               <q-card-section>
-                <div class="text-h6 text-primary">
-                  <q-icon name="add_circle" class="q-mr-sm" />
-                  {{ editMode ? 'Edit Connection' : 'New Connection' }}
-                </div>
+                <div class="text-h6">{{ editMode ? 'Edit' : 'Add' }} Connection</div>
               </q-card-section>
               <q-separator />
               <q-card-section>
@@ -37,33 +22,20 @@
                   ref="connectionForm"
                   :edit-mode="editMode"
                   :connection-data="selectedConnection"
-                  @save="handleSaveConnection"
-                  @cancel="handleCancelEdit"
+                  @save="handleConnectionSave"
                   @test="handleTestConnection"
+                  @cancel="handleCancelEdit"
                 />
               </q-card-section>
             </q-card>
           </div>
 
           <!-- Connection List -->
-          <div class="col-12 col-md-8">
+          <div class="col-12 col-md-6">
             <q-card>
               <q-card-section>
-                <div class="text-h6 text-primary">
-                  <q-icon name="list" class="q-mr-sm" />
-                  Existing Connections
-                  <q-btn
-                    flat
-                    round
-                    icon="refresh"
-                    size="sm"
-                    class="q-ml-sm"
-                    @click="loadConnections"
-                    :loading="connectionsLoading"
-                  >
-                    <q-tooltip>Refresh connections</q-tooltip>
-                  </q-btn>
-                </div>
+                <div class="text-h6">Existing Connections</div>
+                <div class="text-caption text-grey-7">{{ connections.length }} total connections</div>
               </q-card-section>
               <q-separator />
               <q-card-section class="q-pa-none">
@@ -82,53 +54,47 @@
       </q-tab-panel>
 
       <!-- Schema Discovery Tab -->
-      <q-tab-panel name="schema" class="q-pa-md">
+      <q-tab-panel name="schema">
         <div class="row q-gutter-md">
           <!-- Connection Selector -->
           <div class="col-12">
             <q-card>
               <q-card-section>
-                <div class="text-h6 text-primary">
-                  <q-icon name="schema" class="q-mr-sm" />
-                  Schema Discovery
-                </div>
-                <div class="q-mt-md">
-                  <div class="row q-gutter-md items-center">
-                    <div class="col">
-                      <q-select
-                        v-model="selectedSchemaConnection"
-                        :options="activeConnections"
-                        option-label="name"
-                        option-value="id"
-                        label="Select Active Connection"
-                        outlined
-                        map-options
-                        emit-value
-                        @update:model-value="loadSchema"
-                      >
-                        <template v-slot:option="scope">
-                          <q-item v-bind="scope.itemProps">
-                            <q-item-section avatar>
-                              <q-icon :name="getDbTypeIcon(scope.opt.db_type)" />
-                            </q-item-section>
-                            <q-item-section>
-                              <q-item-label>{{ scope.opt.name }}</q-item-label>
-                              <q-item-label caption>{{ scope.opt.db_type }} • {{ scope.opt.status }}</q-item-label>
-                            </q-item-section>
-                          </q-item>
-                        </template>
-                      </q-select>
-                    </div>
-                    <div class="col-auto">
-                      <q-toggle
-                        v-model="quickAnalysisMode"
-                        label="Quick Mode"
-                        color="primary"
-                        @update:model-value="onAnalysisModeChange"
-                      />
-                      <div class="text-caption text-grey-6">
-                        {{ quickAnalysisMode ? 'Fast analysis (limited details)' : 'Full analysis (slower)' }}
-                      </div>
+                <div class="row items-center q-gutter-md">
+                  <div class="col">
+                    <q-select
+                      v-model="selectedSchemaConnection"
+                      :options="activeConnections"
+                      option-label="name"
+                      option-value="id"
+                      label="Select Connection for Schema Discovery"
+                      outlined
+                      map-options
+                      emit-value
+                      @update:model-value="loadSchema"
+                    >
+                      <template v-slot:option="scope">
+                        <q-item v-bind="scope.itemProps">
+                          <q-item-section avatar>
+                            <q-icon :name="getDbTypeIcon(scope.opt.db_type)" />
+                          </q-item-section>
+                          <q-item-section>
+                            <q-item-label>{{ scope.opt.name }}</q-item-label>
+                            <q-item-label caption>{{ scope.opt.db_type }} • {{ scope.opt.status }}</q-item-label>
+                          </q-item-section>
+                        </q-item>
+                      </template>
+                    </q-select>
+                  </div>
+                  <div class="col-auto">
+                    <q-toggle
+                      v-model="quickAnalysisMode"
+                      label="Quick Mode"
+                      color="primary"
+                      @update:model-value="onAnalysisModeChange"
+                    />
+                    <div class="text-caption text-grey-6">
+                      {{ quickAnalysisMode ? 'Fast analysis (limited details)' : 'Full analysis (slower)' }}
                     </div>
                   </div>
                 </div>
@@ -139,18 +105,19 @@
           <!-- Schema Display -->
           <div class="col-12" v-if="selectedSchemaConnection">
             <div class="row q-gutter-md">
-              <!-- Tables List -->
+              <!-- Tables/Measurements List -->
               <div class="col-12 col-md-4">
                 <q-card>
                   <q-card-section>
-                    <div class="text-h6">Tables</div>
-                    <div class="text-caption text-grey-7">{{ schemaData.tables?.length || 0 }} tables found</div>
+                    <div class="text-h6">{{ getSchemaListTitle() }}</div>
+                    <div class="text-caption text-grey-7">{{ getSchemaListCount() }}</div>
                   </q-card-section>
                   <q-separator />
                   <q-card-section class="q-pa-none">
-                    <q-list bordered separator v-if="schemaData.tables?.length">
+                    <q-list bordered separator v-if="hasSchemaItems()">
+                      <!-- SQLite/Parquet Tables -->
                       <q-item
-                        v-for="table in schemaData.tables"
+                        v-for="table in schemaData.tables || []"
                         :key="table.name"
                         clickable
                         v-ripple
@@ -170,6 +137,39 @@
                           </q-chip>
                         </q-item-section>
                       </q-item>
+
+                      <!-- InfluxDB Measurements -->
+                      <q-item
+                        v-for="measurement in schemaData.measurements || []"
+                        :key="measurement.name"
+                        clickable
+                        v-ripple
+                        :active="selectedTable?.name === measurement.name"
+                        @click="selectTable(measurement)"
+                      >
+                        <q-item-section avatar>
+                          <q-icon name="timeline" color="orange" />
+                        </q-item-section>
+                        <q-item-section>
+                          <q-item-label>{{ measurement.name }}</q-item-label>
+                          <q-item-label caption>
+                            {{ measurement.field_count || 0 }} fields • {{ measurement.tag_count || 0 }} tags
+                            <span v-if="measurement.sample_count" class="q-ml-sm">
+                              • {{ formatSampleCount(measurement.sample_count) }} samples
+                            </span>
+                          </q-item-label>
+                        </q-item-section>
+                        <q-item-section side>
+                          <div class="column q-gutter-xs">
+                            <q-chip size="xs" color="green" text-color="white">
+                              {{ measurement.field_count || 0 }}F
+                            </q-chip>
+                            <q-chip size="xs" color="orange" text-color="white">
+                              {{ measurement.tag_count || 0 }}T
+                            </q-chip>
+                          </div>
+                        </q-item-section>
+                      </q-item>
                     </q-list>
                     <div v-else-if="schemaLoading" class="q-pa-md text-center">
                       <q-spinner-dots size="40px" color="primary" />
@@ -177,80 +177,163 @@
                     </div>
                     <div v-else-if="selectedSchemaConnection && !schemaLoading" class="q-pa-md text-center text-grey-7">
                       <q-icon name="warning" size="32px" class="q-mb-sm" />
-                      <div>No tables found or failed to load schema</div>
+                      <div>No {{ getSchemaItemType() }} found or failed to load schema</div>
                       <q-btn flat color="primary" @click="loadSchema" class="q-mt-sm">
                         Retry
                       </q-btn>
                     </div>
                     <div v-else class="q-pa-md text-center text-grey-7">
-                      Select a connection to view tables
+                      Select a connection to view {{ getSchemaItemType() }}
                     </div>
                   </q-card-section>
                 </q-card>
               </div>
 
-              <!-- Columns List -->
+              <!-- Columns/Fields List -->
               <div class="col-12 col-md-8">
                 <q-card>
                   <q-card-section>
                     <div class="text-h6">
-                      Columns
+                      {{ getDetailsTitle() }}
                       <span v-if="selectedTable" class="text-caption">
                         - {{ selectedTable.name }}
                       </span>
                     </div>
                     <div class="text-caption text-grey-7" v-if="selectedTable">
-                      {{ selectedTable.columns?.length || 0 }} columns • Click column for suggestions
+                      {{ getDetailsCount() }} • Click item for details
                     </div>
                   </q-card-section>
                   <q-separator />
                   <q-card-section class="q-pa-none">
+                    <!-- SQLite/Parquet Columns -->
                     <q-table
-                      v-if="selectedTable?.columns"
+                      v-if="selectedTable?.columns && !isInfluxDB()"
                       :rows="selectedTable.columns"
                       :columns="columnTableColumns"
                       row-key="name"
                       flat
-                      :pagination="{ rowsPerPage: 10 }"
-                      dense
+                      :pagination="{ rowsPerPage: 0 }"
+                      hide-pagination
                     >
-                      <template v-slot:body-cell-name="props">
-                        <q-td :props="props">
-                          <div class="text-weight-medium">{{ props.value }}</div>
-                        </q-td>
-                      </template>
                       <template v-slot:body-cell-data_type="props">
                         <q-td :props="props">
-                          <q-chip size="sm" :color="getDataTypeColor(props.value)" text-color="white">
+                          <q-chip
+                            size="sm"
+                            :color="getDataTypeColor(props.value)"
+                            text-color="white"
+                            dense
+                          >
                             {{ props.value }}
                           </q-chip>
                         </q-td>
                       </template>
                       <template v-slot:body-cell-category="props">
                         <q-td :props="props">
-                          <q-chip size="sm" :color="getCategoryColor(props.value)" text-color="white">
+                          <q-chip
+                            size="sm"
+                            :color="getCategoryColor(props.value)"
+                            text-color="white"
+                            dense
+                          >
                             {{ props.value }}
                           </q-chip>
                         </q-td>
                       </template>
-                      <template v-slot:body-cell-suggested_for="props">
-                        <q-td :props="props">
-                          <div class="q-gutter-xs">
-                            <q-chip
-                              v-for="suggestion in props.value"
-                              :key="suggestion"
-                              size="xs"
-                              color="green"
-                              text-color="white"
-                            >
-                              {{ suggestion }}
-                            </q-chip>
-                          </div>
-                        </q-td>
-                      </template>
                     </q-table>
-                    <div v-else-if="!selectedTable" class="q-pa-md text-center text-grey-7">
-                      Select a table to view columns
+
+                    <!-- InfluxDB Fields and Tags -->
+                    <div v-else-if="selectedTable?.fields && isInfluxDB()" class="q-pa-md">
+                      <div class="row q-gutter-md">
+                        <!-- Fields (Numeric Data) -->
+                        <div class="col-12" v-if="getFields().length > 0">
+                          <div class="text-subtitle1 text-green-8 q-mb-md">
+                            <q-icon name="functions" class="q-mr-sm" />
+                            Fields ({{ getFields().length }})
+                          </div>
+                          <q-list bordered separator>
+                            <q-item v-for="field in getFields()" :key="`field-${field.name}`">
+                              <q-item-section avatar>
+                                <q-icon name="functions" color="green" />
+                              </q-item-section>
+                              <q-item-section>
+                                <q-item-label>{{ field.name }}</q-item-label>
+                                <q-item-label caption>{{ field.type || 'number' }} • Used for numeric time-series data</q-item-label>
+                              </q-item-section>
+                              <q-item-section side>
+                                <q-chip size="sm" color="green" text-color="white" dense>
+                                  field
+                                </q-chip>
+                              </q-item-section>
+                            </q-item>
+                          </q-list>
+                        </div>
+
+                        <!-- Tags (Labels for Filtering) -->
+                        <div class="col-12" v-if="getTags().length > 0">
+                          <div class="text-subtitle1 text-orange-8 q-mb-md">
+                            <q-icon name="label" class="q-mr-sm" />
+                            Tags ({{ getTags().length }})
+                          </div>
+                          <q-list bordered separator>
+                            <q-item v-for="tag in getTags()" :key="`tag-${tag.name}`">
+                              <q-item-section avatar>
+                                <q-icon name="label" color="orange" />
+                              </q-item-section>
+                              <q-item-section>
+                                <q-item-label>{{ tag.name }}</q-item-label>
+                                <q-item-label caption>string • Used for filtering and grouping data</q-item-label>
+                              </q-item-section>
+                              <q-item-section side>
+                                <q-chip size="sm" color="orange" text-color="white" dense>
+                                  tag
+                                </q-chip>
+                              </q-item-section>
+                            </q-item>
+                          </q-list>
+                        </div>
+
+                        <!-- Timestamp -->
+                        <div class="col-12">
+                          <div class="text-subtitle1 text-blue-8 q-mb-md">
+                            <q-icon name="schedule" class="q-mr-sm" />
+                            Timestamp
+                          </div>
+                          <q-list bordered>
+                            <q-item>
+                              <q-item-section avatar>
+                                <q-icon name="schedule" color="blue" />
+                              </q-item-section>
+                              <q-item-section>
+                                <q-item-label>_time</q-item-label>
+                                <q-item-label caption>timestamp • Time dimension for time-series data</q-item-label>
+                              </q-item-section>
+                              <q-item-section side>
+                                <q-chip size="sm" color="blue" text-color="white" dense>
+                                  timestamp
+                                </q-chip>
+                              </q-item-section>
+                            </q-item>
+                          </q-list>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Empty State -->
+                    <div v-else-if="selectedTable && !schemaLoading" class="q-pa-xl text-center text-grey-7">
+                      <q-icon name="info" size="48px" class="q-mb-md" />
+                      <div class="text-h6">No Details Available</div>
+                      <div class="text-body2">
+                        Unable to load {{ isInfluxDB() ? 'fields and tags' : 'columns' }} for this {{ getSchemaItemType() }}
+                      </div>
+                    </div>
+
+                    <!-- No Selection State -->
+                    <div v-else-if="!selectedTable && !schemaLoading" class="q-pa-xl text-center text-grey-7">
+                      <q-icon name="arrow_back" size="48px" class="q-mb-md" />
+                      <div class="text-h6">Select {{ getSchemaItemType() }}</div>
+                      <div class="text-body2">
+                        Choose a {{ getSchemaItemType() }} from the list to view its {{ isInfluxDB() ? 'fields and tags' : 'columns' }}
+                      </div>
                     </div>
                   </q-card-section>
                 </q-card>
@@ -303,6 +386,11 @@ export default {
   computed: {
     activeConnections() {
       return this.connections.filter(conn => conn.status === 'active')
+    },
+
+    selectedConnectionInfo() {
+      if (!this.selectedSchemaConnection) return null
+      return this.connections.find(conn => conn.id === this.selectedSchemaConnection)
     }
   },
   async mounted() {
@@ -315,6 +403,7 @@ export default {
       try {
         const response = await dataSourceAPI.getAllConnections()
         this.connections = response.data
+        console.log('✅ Connections loaded:', this.connections)
       } catch (error) {
         this.$q.notify({
           type: 'negative',
@@ -325,104 +414,152 @@ export default {
       }
     },
 
-    async handleSaveConnection(connectionData) {
+    // 🔧 FIXED: Proper connection creation flow
+    async handleConnectionSave(connectionData) {
+      console.log('💾 DataSourceManager: Creating connection...', connectionData)
+
       try {
-        let response
+        let savedConnection
+
         if (this.editMode) {
-          // Update connection
-          const updateData = {
+          // Update existing connection
+          console.log('📝 Updating connection:', this.selectedConnection.id)
+
+          // Update basic connection info
+          await dataSourceAPI.updateConnection(this.selectedConnection.id, {
             name: connectionData.name,
             description: connectionData.description,
             db_type: connectionData.db_type
-          }
-          response = await dataSourceAPI.updateConnection(this.selectedConnection.id, updateData)
+          })
 
           // Save configuration
-          if (connectionData.config && Object.keys(connectionData.config).length > 0) {
-            await dataSourceAPI.saveConnectionConfigs(this.selectedConnection.id, connectionData.config)
+          await dataSourceAPI.saveConnectionConfigs(this.selectedConnection.id, connectionData.config)
+
+          savedConnection = {
+            ...this.selectedConnection,
+            ...connectionData
           }
 
-          this.$emit('connection-updated', response.data)
+          this.$emit('connection-updated', savedConnection)
+
         } else {
-          // Create connection
-          const createData = {
+          // Create new connection
+          console.log('🆕 Creating new connection...')
+
+          // Step 1: Create the connection
+          const connectionResponse = await dataSourceAPI.createConnection({
             name: connectionData.name,
             description: connectionData.description,
             db_type: connectionData.db_type
-          }
+          })
 
-          console.log('🚀 Creating connection:', createData)
-          response = await dataSourceAPI.createConnection(createData)
-          console.log('✅ Connection created:', response.data)
+          console.log('✅ Connection created:', connectionResponse.data)
+          savedConnection = connectionResponse.data
 
-          // Save configuration
+          // Step 2: Save configuration if provided
           if (connectionData.config && Object.keys(connectionData.config).length > 0) {
-            console.log('🔧 Saving config for connection:', response.data.id, connectionData.config)
-            await dataSourceAPI.saveConnectionConfigs(response.data.id, connectionData.config)
-            console.log('✅ Config saved')
+            console.log('🔧 Saving connection config...', connectionData.config)
+            await dataSourceAPI.saveConnectionConfigs(savedConnection.id, connectionData.config)
           }
 
-          this.$emit('connection-created', response.data)
+          this.$emit('connection-created', savedConnection)
         }
 
-        // Refresh connections list
+        // Reset form state
+        this.editMode = false
+        this.selectedConnection = null
+
+        // Reset form loading state
+        if (this.$refs.connectionForm) {
+          this.$refs.connectionForm.resetLoadingState()
+        }
+
+        // Reload connections to get updated status
         await this.loadConnections()
 
-        // Reset form
-        this.handleCancelEdit()
-
+        // Show success message
         this.$q.notify({
           type: 'positive',
-          message: `Connection ${this.editMode ? 'updated' : 'created'} successfully!`
+          message: `Connection "${savedConnection.name}" ${this.editMode ? 'updated' : 'created'} successfully!`,
+          position: 'top-right',
+          timeout: 3000
         })
 
       } catch (error) {
         console.error('❌ Error saving connection:', error)
+
+        // Reset form loading state
+        if (this.$refs.connectionForm) {
+          this.$refs.connectionForm.resetLoadingState()
+        }
+
+        // Show detailed error message
+        const errorMessage = error.response?.data?.detail || error.message || 'Unknown error occurred'
         this.$q.notify({
           type: 'negative',
-          message: `Failed to ${this.editMode ? 'update' : 'create'} connection: ` + (error.response?.data?.detail || error.message)
+          message: `Failed to ${this.editMode ? 'update' : 'create'} connection: ${errorMessage}`,
+          position: 'top-right',
+          timeout: 5000
         })
       }
     },
 
     handleEditConnection(connection) {
+      console.log('📝 Editing connection:', connection)
       this.editMode = true
       this.selectedConnection = { ...connection }
     },
 
     handleCancelEdit() {
+      console.log('❌ Cancelled edit')
       this.editMode = false
       this.selectedConnection = null
-      this.$refs.connectionForm?.resetForm()
+      if (this.$refs.connectionForm) {
+        this.$refs.connectionForm.resetForm()
+      }
     },
 
     async handleDeleteConnection(connection) {
       this.$q.dialog({
         title: 'Confirm Deletion',
-        message: `Are you sure you want to delete connection "${connection.name}"?`,
+        message: `Are you sure you want to delete connection "${connection.name}"? This action cannot be undone.`,
         cancel: true,
-        persistent: true
+        persistent: true,
+        color: 'negative'
       }).onOk(async () => {
         try {
+          console.log('🗑️ Deleting connection:', connection.id)
           await dataSourceAPI.deleteConnection(connection.id)
+
           this.$emit('connection-deleted', connection.name)
           await this.loadConnections()
+
+          this.$q.notify({
+            type: 'positive',
+            message: `Connection "${connection.name}" deleted successfully`,
+            position: 'top-right'
+          })
         } catch (error) {
+          console.error('❌ Delete error:', error)
           this.$q.notify({
             type: 'negative',
-            message: 'Failed to delete connection: ' + error.message
+            message: 'Failed to delete connection: ' + error.message,
+            position: 'top-right'
           })
         }
       })
     },
 
-    async handleTestConnection(testData) {
-      // This is handled by the ConnectionForm component
-      await this.loadConnections() // Refresh to get updated status
+    async handleTestConnection(testResult) {
+      console.log('🧪 Test result received:', testResult)
+      // Connection form handles the testing, we just refresh connections
+      await this.loadConnections()
     },
 
     async handleTestExistingConnection(connection) {
       try {
+        console.log('🧪 Testing existing connection:', connection.id)
+
         const configResponse = await dataSourceAPI.getConnectionConfigsDict(connection.id)
         const testData = {
           connection_id: connection.id,
@@ -433,19 +570,23 @@ export default {
 
         this.$q.notify({
           type: response.data.success ? 'positive' : 'negative',
-          message: response.data.message
+          message: response.data.message,
+          position: 'top-right'
         })
 
         await this.loadConnections()
       } catch (error) {
+        console.error('❌ Test error:', error)
         this.$q.notify({
           type: 'negative',
-          message: 'Failed to test connection: ' + error.message
+          message: 'Failed to test connection: ' + error.message,
+          position: 'top-right'
         })
       }
     },
 
     async handleDiscoverSchema(connection) {
+      console.log('🔍 Discovering schema for:', connection.id)
       this.selectedSchemaConnection = connection.id
       this.activeTab = 'schema'
       await this.loadSchema()
@@ -470,9 +611,18 @@ export default {
           this.schemaData = response.data.data
           console.log('✅ Schema loaded:', this.schemaData)
 
+          // Emit schema discovered event with corrected data structure
+          const totalItems = this.isInfluxDB()
+            ? this.schemaData.measurements?.length || 0
+            : this.schemaData.tables?.length || 0
+
+          const totalDetails = this.isInfluxDB()
+            ? this.schemaData.measurements?.reduce((sum, m) => sum + (m.field_count || 0) + (m.tag_count || 0), 0) || 0
+            : this.schemaData.tables?.reduce((sum, table) => sum + (table.total_columns || 0), 0) || 0
+
           this.$emit('schema-discovered', {
-            totalTables: this.schemaData.tables?.length || 0,
-            totalColumns: this.schemaData.tables?.reduce((sum, table) => sum + (table.total_columns || 0), 0) || 0
+            totalTables: totalItems,
+            totalColumns: totalDetails
           })
         } else {
           throw new Error(response.data.message)
@@ -498,6 +648,89 @@ export default {
       if (this.selectedSchemaConnection) {
         this.loadSchema()
       }
+    },
+
+    // Schema Display Helpers
+    isInfluxDB() {
+      return this.selectedConnectionInfo?.db_type === 'influxdb'
+    },
+
+    hasSchemaItems() {
+      if (this.isInfluxDB()) {
+        return this.schemaData.measurements && this.schemaData.measurements.length > 0
+      } else {
+        return this.schemaData.tables && this.schemaData.tables.length > 0
+      }
+    },
+
+    getSchemaListTitle() {
+      if (this.isInfluxDB()) {
+        return 'Measurements'
+      } else if (this.selectedConnectionInfo?.db_type === 'parquet') {
+        return 'Equipment Groups'
+      } else {
+        return 'Tables'
+      }
+    },
+
+    getSchemaListCount() {
+      if (this.isInfluxDB()) {
+        return `${this.schemaData.measurements?.length || 0} measurements found`
+      } else {
+        return `${this.schemaData.tables?.length || 0} tables found`
+      }
+    },
+
+    getSchemaItemType() {
+      if (this.isInfluxDB()) {
+        return 'measurements'
+      } else if (this.selectedConnectionInfo?.db_type === 'parquet') {
+        return 'equipment groups'
+      } else {
+        return 'tables'
+      }
+    },
+
+    getDetailsTitle() {
+      if (this.isInfluxDB()) {
+        return 'Fields & Tags'
+      } else {
+        return 'Columns'
+      }
+    },
+
+    getDetailsCount() {
+      if (this.isInfluxDB() && this.selectedTable?.fields) {
+        const fields = this.getFields().length
+        const tags = this.getTags().length
+        return `${fields} fields, ${tags} tags`
+      } else if (this.selectedTable?.columns) {
+        return `${this.selectedTable.columns.length} columns`
+      }
+      return '0 items'
+    },
+
+    // InfluxDB specific methods
+    getFields() {
+      if (!this.selectedTable?.fields) return []
+      return this.selectedTable.fields.filter(f => f.category === 'field')
+    },
+
+    getTags() {
+      if (!this.selectedTable?.fields) return []
+      return this.selectedTable.fields.filter(f => f.category === 'tag')
+    },
+
+    formatSampleCount(count) {
+      if (typeof count === 'number') {
+        if (count >= 1000000) {
+          return (count / 1000000).toFixed(1) + 'M'
+        } else if (count >= 1000) {
+          return (count / 1000).toFixed(1) + 'K'
+        }
+        return count.toString()
+      }
+      return count || '0'
     },
 
     // Helper methods

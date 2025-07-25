@@ -1,4 +1,4 @@
-<!-- components/ConnectionList.vue -->
+<!-- components/ConnectionList.vue - Fixed Event Bindings & Table Display -->
 <template>
   <div class="connection-list">
     <!-- Loading State -->
@@ -23,6 +23,8 @@
       flat
       :pagination="{ rowsPerPage: 10 }"
       :loading="loading"
+      no-data-label="No connections available"
+      loading-label="Loading connections..."
     >
       <!-- Connection Name -->
       <template v-slot:body-cell-name="props">
@@ -85,7 +87,7 @@
               size="sm"
               icon="wifi_protected_setup"
               color="info"
-              @click="$emit('test', props.row)"
+              @click="handleTestConnection(props.row)"
               :disable="!canTest(props.row)"
             >
               <q-tooltip>Test Connection</q-tooltip>
@@ -98,7 +100,7 @@
               size="sm"
               icon="schema"
               color="purple"
-              @click="$emit('discover-schema', props.row)"
+              @click="handleDiscoverSchema(props.row)"
               :disable="props.row.status !== 'active'"
             >
               <q-tooltip>Discover Schema</q-tooltip>
@@ -111,7 +113,7 @@
               size="sm"
               icon="edit"
               color="primary"
-              @click="$emit('edit', props.row)"
+              @click="handleEditConnection(props.row)"
             >
               <q-tooltip>Edit Connection</q-tooltip>
             </q-btn>
@@ -173,7 +175,7 @@
 
     <!-- Connection Details Dialog -->
     <q-dialog v-model="showDetailsDialog" persistent>
-      <q-card style="min-width: 400px">
+      <q-card style="min-width: 400px; max-width: 600px;">
         <q-card-section>
           <div class="text-h6">Connection Details</div>
         </q-card-section>
@@ -239,6 +241,17 @@
                 <q-item-label caption>{{ formatDateTime(selectedConnection.updated_at) }}</q-item-label>
               </q-item-section>
             </q-item>
+
+            <!-- Connection ID for debugging -->
+            <q-item v-if="$q.dev">
+              <q-item-section avatar>
+                <q-icon name="fingerprint" />
+              </q-item-section>
+              <q-item-section>
+                <q-item-label>ID (Dev Only)</q-item-label>
+                <q-item-label caption>{{ selectedConnection.id }}</q-item-label>
+              </q-item-section>
+            </q-item>
           </q-list>
         </q-card-section>
 
@@ -265,6 +278,7 @@ export default {
       default: false
     }
   },
+  // 🔧 FIXED: Updated emit events to match DataSourceManager expectations
   emits: ['edit', 'delete', 'test', 'discover-schema'],
   data() {
     return {
@@ -313,6 +327,38 @@ export default {
     }
   },
   methods: {
+    // 🔧 FIXED: Event handlers with proper emission
+    handleEditConnection(connection) {
+      console.log('📝 Edit connection clicked:', connection.name)
+      this.$emit('edit', connection)
+    },
+
+    handleTestConnection(connection) {
+      console.log('🧪 Test connection clicked:', connection.name)
+      this.$emit('test', connection)
+    },
+
+    handleDiscoverSchema(connection) {
+      console.log('🔍 Discover schema clicked:', connection.name)
+      this.$emit('discover-schema', connection)
+    },
+
+    confirmDelete(connection) {
+      console.log('🗑️ Delete connection clicked:', connection.name)
+
+      this.$q.dialog({
+        title: 'Confirm Deletion',
+        message: `Are you sure you want to delete connection "${connection.name}"? This action cannot be undone.`,
+        cancel: true,
+        persistent: true,
+        color: 'negative'
+      }).onOk(() => {
+        console.log('🗑️ Deletion confirmed for:', connection.name)
+        this.$emit('delete', connection)
+      })
+    },
+
+    // Helper methods
     getDbTypeIcon(dbType) {
       const icons = {
         sqlite3: 'storage',
@@ -335,7 +381,9 @@ export default {
       const colors = {
         active: 'green',
         inactive: 'grey',
-        error: 'red'
+        error: 'red',
+        testing: 'orange',
+        unknown: 'grey-5'
       }
       return colors[status] || 'grey'
     },
@@ -344,45 +392,41 @@ export default {
       const icons = {
         active: 'check_circle',
         inactive: 'radio_button_unchecked',
-        error: 'error'
+        error: 'error',
+        testing: 'sync',
+        unknown: 'help'
       }
       return icons[status] || 'help'
     },
 
     canTest(connection) {
-      return connection.status !== 'active' // Only allow testing if not already active
+      // Allow testing for all connections except those currently being tested
+      return connection.status !== 'testing'
     },
 
     formatDate(dateString) {
+      if (!dateString) return 'N/A'
       return date.formatDate(dateString, 'MMM DD, YYYY')
     },
 
     formatTime(dateString) {
+      if (!dateString) return ''
       return date.formatDate(dateString, 'HH:mm:ss')
     },
 
     formatDateTime(dateString) {
+      if (!dateString) return 'N/A'
       return date.formatDate(dateString, 'MMM DD, YYYY HH:mm:ss')
     },
 
-    confirmDelete(connection) {
-      this.$q.dialog({
-        title: 'Confirm Deletion',
-        message: `Are you sure you want to delete connection "${connection.name}"? This action cannot be undone.`,
-        cancel: true,
-        persistent: true,
-        color: 'negative'
-      }).onOk(() => {
-        this.$emit('delete', connection)
-      })
-    },
-
     viewDetails(connection) {
+      console.log('ℹ️ View details clicked:', connection.name)
       this.selectedConnection = connection
       this.showDetailsDialog = true
     },
 
     duplicateConnection(connection) {
+      console.log('📋 Duplicate connection clicked:', connection.name)
       this.$q.notify({
         type: 'info',
         message: 'Duplicate functionality will be implemented in the next phase',
@@ -391,6 +435,7 @@ export default {
     },
 
     exportConnection(connection) {
+      console.log('📤 Export connection clicked:', connection.name)
       this.$q.notify({
         type: 'info',
         message: 'Export functionality will be implemented in the next phase',
@@ -415,9 +460,22 @@ export default {
   background: #f8f9fa;
   font-weight: 600;
   color: #2c3e50;
+  border-bottom: 2px solid #e9ecef;
+}
+
+:deep(.q-table tbody tr) {
+  transition: background-color 0.2s ease;
 }
 
 :deep(.q-table tbody tr:hover) {
+  background: #f0f8ff;
+}
+
+:deep(.q-table tbody tr:nth-child(even)) {
+  background: #fafafa;
+}
+
+:deep(.q-table tbody tr:nth-child(even):hover) {
   background: #f0f8ff;
 }
 
@@ -430,17 +488,9 @@ export default {
   transform: scale(1.1);
 }
 
-/* Responsive adjustments */
-@media (max-width: 768px) {
-  :deep(.q-table th),
-  :deep(.q-table td) {
-    padding: 8px 4px;
-  }
-
-  .q-btn {
-    min-width: 32px;
-    padding: 6px;
-  }
+/* Chip styling */
+.q-chip {
+  font-weight: 600;
 }
 
 /* Empty state styling */
@@ -450,5 +500,80 @@ export default {
   flex-direction: column;
   justify-content: center;
   align-items: center;
+}
+
+/* Loading state styling */
+.q-spinner-dots {
+  margin: 0 auto;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  :deep(.q-table th),
+  :deep(.q-table td) {
+    padding: 8px 4px;
+    font-size: 0.875rem;
+  }
+
+  .q-btn {
+    min-width: 32px;
+    padding: 6px;
+  }
+
+  .row.q-gutter-xs {
+    gap: 2px;
+  }
+
+  /* Hide some columns on mobile */
+  :deep(.q-table th:nth-child(4)),
+  :deep(.q-table td:nth-child(4)) {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  /* Hide more columns on very small screens */
+  :deep(.q-table th:nth-child(3)),
+  :deep(.q-table td:nth-child(3)) {
+    display: none;
+  }
+}
+
+/* Dialog styling */
+.q-dialog .q-card {
+  border-radius: 8px;
+}
+
+/* Status and type chip animations */
+.q-chip {
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Table row hover effects */
+:deep(.q-table tbody tr) {
+  cursor: pointer;
+}
+
+/* Action button container */
+.row.q-gutter-xs {
+  justify-content: center;
+  flex-wrap: nowrap;
+}
+
+/* Tooltip styling */
+.q-tooltip {
+  font-size: 0.75rem;
+  padding: 4px 8px;
 }
 </style>
