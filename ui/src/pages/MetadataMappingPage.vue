@@ -937,14 +937,14 @@ export default {
         let masterModelResponse
         if (this.masterModel) {
           masterModelResponse = await metaAPI.createMasterModel(this.masterModel)
-          console.log('✅ Master model saved:', masterModelResponse.data)
+          console.log('✅ Master model saved:', masterModelResponse)
         }
 
         for (const equipment of this.equipmentList) {
           if (equipment.isNew) {
             const equipmentData = {
               ...equipment,
-              model_id: masterModelResponse.data.model_id
+              model_id: masterModelResponse.model_id
             }
             delete equipmentData.id
             delete equipmentData.isNew
@@ -952,14 +952,14 @@ export default {
             delete equipmentData.influxdb_info // Remove InfluxDB info before saving
 
             const response = await metaAPI.createEquipment(equipmentData)
-            console.log('✅ Equipment saved:', response.data)
+            console.log('✅ Equipment saved:', response)
 
             // Save filters for this equipment
             const equipmentFilters = this.filtersList.filter(f => f.eqp_id === equipment.id)
             for (const filter of equipmentFilters) {
               if (filter.isNew) {
                 const filterData = {
-                  eqp_id: response.data.id,
+                  eqp_id: response.id,
                   filter_key: filter.filter_key,
                   filter_value: filter.filter_value
                 }
@@ -977,7 +977,7 @@ export default {
             for (const spec of equipmentSpecs) {
               if (spec.isNew) {
                 const specData = {
-                  eqp_id: response.data.id, // Use actual saved equipment ID
+                  eqp_id: response.id, // Use actual saved equipment ID
                   key: spec.key,
                   value: spec.value,
                   desc: spec.desc,
@@ -998,7 +998,7 @@ export default {
             for (const signal of equipmentSignals) {
               if (signal.isNew) {
                 const signalData = {
-                  eqp_id: response.data.id, // Use actual saved equipment ID
+                  eqp_id: response.id, // Use actual saved equipment ID
                   key: signal.key,
                   value: signal.value, // Enhanced: Include value field
                   unit: signal.unit,
@@ -1019,7 +1019,7 @@ export default {
             for (const doc of equipmentDocs) {
               if (doc.isNew) {
                 const docData = {
-                  eqp_id: response.data.id, // Use actual saved equipment ID
+                  eqp_id: response.id, // Use actual saved equipment ID
                   path: doc.path,
                   desc: doc.desc
                 }

@@ -109,9 +109,33 @@ export const dataSourceAPI = {
 // Metadata API endpoints (existing APIs)
 export const metaAPI = {
   // Master Models
-  createMasterModel(data) {
-    return api.post('/models', data)
-  },
+  createMasterModel:async function (data) {
+    try {
+      const allModelsResponse = await  api.get('/models');
+      const allModels = allModelsResponse.data;
+      console.log(allModelsResponse)
+
+      console.log(allModels)
+      const existingModel = allModels.find(model =>
+        // Adjust the condition as per how "equality" should be checked
+        model.name === data.name // Example check
+      );
+      console.log(existingModel)
+
+      if (existingModel) {
+        console.log('model returning',existingModel)
+        return existingModel;
+      } else {
+        const newModelResponse = await  api.post('/models', data);
+        console.log('new model returning',newModelResponse)
+
+        return newModelResponse.data;
+      }
+      } catch (error) {
+        console.error('Error in createMasterModel:', error);
+        throw error;
+      }
+    },
 
   getAllMasterModels() {
     return api.get('/models')
@@ -126,9 +150,33 @@ export const metaAPI = {
   },
 
   // Equipment
-  createEquipment(data) {
-    return api.post('/equipments', data)
-  },
+  createEquipment:async function (data) {
+    try {
+      const allEquResponse = await  api.get('/equipments');
+      const allEqu = allEquResponse.data;
+      console.log(allEquResponse)
+
+      console.log(allEqu)
+      const existingModel = allEqu.find(model =>
+        // Adjust the condition as per how "equality" should be checked
+        model.name === data.name // Example check
+      );
+
+      if (existingModel) {
+        console.log('equ returning',existingModel)
+
+        return existingModel;
+      } else {
+        const newModelResponse = await  api.post('/equipments', data);
+        console.log('new equ returning',newModelResponse)
+
+        return newModelResponse.data;
+      }
+      } catch (error) {
+        console.error('Error in createMasterModel:', error);
+        throw error;
+      }
+    },
 
   getAllEquipments() {
     return api.get('/equipments')

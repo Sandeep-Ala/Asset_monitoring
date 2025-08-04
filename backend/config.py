@@ -10,8 +10,8 @@ from models.datasource_models import DataConnection, ConnectionConfig
 from models.widget_models import Widget, PageTimeSettings  # New widget models
 
 BASE_PARQUET_PATH = "D:\Asset Monitoring System\Data-Backup\site=UK_Tollgate"
-
-SQLITE_URL = "sqlite:///D:/Asset Monitoring System/GITHUB/Asset_monitoring/MetaDB.sqlite3"
+#D:\Asset Monitoring System\GITHUB\Asset_M_combined\MetaDB.sqlite3
+SQLITE_URL = "sqlite:///D:/Asset Monitoring System/GITHUB/Asset_M_combined/MetaDB.sqlite3"
 
 engine = create_engine(SQLITE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(bind=engine)
